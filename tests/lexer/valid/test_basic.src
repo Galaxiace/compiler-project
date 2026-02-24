@@ -1,0 +1,6 @@
+fn main() {
+    int counter = 42;
+    float pi = 3.14;
+    bool flag = true;
+    return 0;
+}
