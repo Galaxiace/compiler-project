@@ -8,14 +8,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="minicompiler",
+    name="compiler",
     version="0.1.0",
-    author="Your Team Name",
-    author_email="your.email@example.com",
+    author="Galaxiace",
+    author_email="zevs2885@gmail.com",
     description="A mini compiler for a C-like language",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/minicompiler",
+    url="https://github.com/Galaxiace/compiler-project",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -23,11 +23,9 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
     ],
     python_requires=">=3.8",
-    install_requires=[],  # Основные зависимости
+    install_requires=[],
     extras_require={
         "dev": [
             "pytest>=7.0.0",

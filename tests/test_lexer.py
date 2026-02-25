@@ -214,9 +214,8 @@ def test_unterminated_string_with_newline():
     assert tokens[3].lexeme == 'unterminated'
     assert tokens[3].line == 1
     assert tokens[3].column == 12
-    assert tokens[3].literal is None  # Добавлена проверка, что literal не используется
+    assert tokens[3].literal is None
 
-    # После переноса строки токены должны обрабатываться нормально
     assert tokens[4].type == TokenType.INT
     assert tokens[4].lexeme == "int"
     assert tokens[4].line == 2

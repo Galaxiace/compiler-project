@@ -1,0 +1,66 @@
+// Пример для тестирования всех возможностей лексера
+
+fn main() {
+    // ---- Переменные и типы данных ----
+    int counter = 42;
+    float pi = 3.14159;
+    bool is_valid = true;
+    string message = "Hello, Lexer!";
+
+    // ---- Арифметические операции ----
+    int a = 10 + 5 * 2;
+    int b = a - 3;
+    int c = a % 4;
+    float d = pi / 2.0;
+
+    // ---- Операторы сравнения ----
+    bool test1 = a == b;
+    bool test2 = a != b;
+    bool test3 = a < b;
+    bool test4 = a <= b;
+    bool test5 = a > b;
+    bool test6 = a >= b;
+
+    // ---- Логические операторы ----
+    bool result1 = test1 && test2;
+    bool result2 = test1 || test3;
+    bool result3 = a & b;
+    bool result4 = a | b;
+
+    // ---- Сложные выражения ----
+    int complex = (a + b) * (c - d) / 2;
+    bool logic_complex = (a > 5) && (b < 10) || (c == 0);
+
+    // ---- Отрицательные числа ----
+    int negative1 = -42;
+    int negative2 = -100;
+    float negative3 = -3.14;
+    int subtraction = 5 - 3;  // оператор минус
+    int negative_test = -5 + 3;  // отрицательное число
+
+    // ---- Структуры и функции ----
+    struct Point {
+        int x;
+        int y;
+    };
+
+    fn calculate(int value) -> int {
+        if (value > 0) {
+            return value * 2;
+        } else {
+            return 0;
+        }
+    }
+
+    // ---- Циклы ----
+    for (int i = 0; i < 10; i = i + 1) {
+        int x = i * 2;
+    }
+
+    int j = 0;
+    while (j < 5) {
+        j = j + 1;
+    }
+
+    return 0;
+}

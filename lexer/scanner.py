@@ -155,7 +155,6 @@ class Scanner:
         """Пропускает однострочный комментарий"""
         while not self.is_at_end() and self._peek() != '\n':
             self._advance()
-        # Не добавляем токен для комментария
 
     def _skip_multi_line_comment(self):
         """Пропускает многострочный комментарий"""
