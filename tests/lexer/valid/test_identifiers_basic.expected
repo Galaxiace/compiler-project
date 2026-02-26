@@ -1,0 +1,7 @@
+1:1 IDENTIFIER "x"
+1:3 IDENTIFIER "variable"
+1:12 IDENTIFIER "var123"
+1:19 IDENTIFIER "_private"
+1:28 IDENTIFIER "camelCase"
+1:38 IDENTIFIER "snake_case"
+1:48 END_OF_FILE ""

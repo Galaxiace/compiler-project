@@ -1,0 +1,4 @@
+1:1 STRING_LITERAL ""!@#$%^&*()"" !@#$%^&*()
+1:14 STRING_LITERAL ""1234567890"" 1234567890
+1:27 STRING_LITERAL ""абвгдеёж"" абвгдеёж
+1:37 END_OF_FILE ""

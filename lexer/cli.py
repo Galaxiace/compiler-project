@@ -31,11 +31,11 @@ def main():
         for error in scanner.errors:
             print(f"  {error}", file=sys.stderr)
 
-    # Подготавливаем вывод
+    # Подготавливаем вывод в формате LINE:COLUMN_TOKEN_TYPE
     output_lines = []
     for token in tokens:
         if token.type == TokenType.END_OF_FILE:
-            output_lines.append(f"{token.line}:{token.column} END_OF_FILE \"\"")
+            output_lines.append(f"{token.line}:{token.column}_END_OF_FILE \"\"")
         else:
             literal_str = f" {token.literal}" if token.literal is not None else ""
             output_lines.append(f"{token.line}:{token.column} {token.type.name} \"{token.lexeme}\"{literal_str}")

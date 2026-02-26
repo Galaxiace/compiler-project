@@ -72,7 +72,7 @@ class Token:
     def __str__(self):
         literal_str = f" {self.literal}" if self.literal is not None else ""
 
-        # Для INVALID токенов выводим как есть, без лишних кавычек
+        # Для INVALID токенов выводим как есть
         if self.type == TokenType.INVALID:
             return f"{self.line}:{self.column} {self.type.name} \"{self.lexeme}\"{literal_str}"
 

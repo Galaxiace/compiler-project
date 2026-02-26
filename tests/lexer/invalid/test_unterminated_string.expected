@@ -1,0 +1,10 @@
+1:1 IDENTIFIER "string"
+1:8 IDENTIFIER "s"
+1:10 ASSIGN "="
+1:12 INVALID "unterminated"
+2:1 INT "int"
+2:5 IDENTIFIER "x"
+2:7 ASSIGN "="
+2:9 INT_LITERAL "5" 5
+2:10 SEMICOLON ";"
+2:11 END_OF_FILE ""

@@ -53,6 +53,13 @@ compiler-project/
 pytest tests/ -v
 ```
 
+### Тестирование valid и invalid src:
+
+```bash
+
+python tests/test_runner.py -v
+```
+
 ### Тестирование файла со всеми токенами
 
 ```bash

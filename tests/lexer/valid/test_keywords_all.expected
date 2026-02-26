@@ -1,0 +1,14 @@
+1:1 IF "if"
+1:4 ELSE "else"
+1:9 WHILE "while"
+1:15 FOR "for"
+1:19 INT "int"
+1:23 FLOAT "float"
+1:29 BOOL "bool"
+1:34 RETURN "return"
+1:41 TRUE "true" True
+1:46 FALSE "false" False
+1:52 VOID "void"
+1:57 STRUCT "struct"
+1:64 FN "fn"
+1:66 END_OF_FILE ""

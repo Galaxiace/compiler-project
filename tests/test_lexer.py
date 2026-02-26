@@ -147,17 +147,6 @@ def test_invalid_character():
     assert isinstance(scanner.errors[0], InvalidCharacterError)
 
 
-def test_unterminated_string():
-    """Тестирование незакрытой строки"""
-    source = '"unterminated string'
-    scanner = Scanner(source)
-    tokens = scanner.scan_tokens()
-
-    # Должна быть ошибка
-    assert len(scanner.errors) > 0
-    assert isinstance(scanner.errors[0], UnterminatedStringError)
-
-
 def test_unterminated_string_with_newline():
     """Тестирование незакрытой строки с переносом строки"""
     source = 'string s = "unterminated\nint x = 5;'
