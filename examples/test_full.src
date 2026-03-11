@@ -1,66 +1,169 @@
-// Пример для тестирования всех возможностей лексера
+// ============================================
+// ПОЛНОЕ ТЕСТИРОВАНИЕ ЛЕКСЕРА И ПАРСЕРА MINICOMPILER
+// ============================================
 
-fn main() {
-    // ---- Переменные и типы данных ----
-    int counter = 42;
-    float pi = 3.14159;
-    bool is_valid = true;
-    string message = "Hello, Lexer!";
-
-    // ---- Арифметические операции ----
-    int a = 10 + 5 * 2;
-    int b = a - 3;
-    int c = a % 4;
-    float d = pi / 2.0;
-
-    // ---- Операторы сравнения ----
-    bool test1 = a == b;
-    bool test2 = a != b;
-    bool test3 = a < b;
-    bool test4 = a <= b;
-    bool test5 = a > b;
-    bool test6 = a >= b;
-
-    // ---- Логические операторы ----
-    bool result1 = test1 && test2;
-    bool result2 = test1 || test3;
-    bool result3 = a & b;
-    bool result4 = a | b;
-
-    // ---- Сложные выражения ----
-    int complex = (a + b) * (c - d) / 2;
-    bool logic_complex = (a > 5) && (b < 10) || (c == 0);
-
-    // ---- Отрицательные числа ----
-    int negative1 = -42;
-    int negative2 = -100;
-    float negative3 = -3.14;
-    int subtraction = 5 - 3;  // оператор минус
-    int negative_test = -5 + 3;  // отрицательное число
-
-    // ---- Структуры и функции ----
-    struct Point {
-        int x;
-        int y;
-    };
-
-    fn calculate(int value) -> int {
-        if (value > 0) {
-            return value * 2;
-        } else {
-            return 0;
-        }
-    }
-
-    // ---- Циклы ----
-    for (int i = 0; i < 10; i = i + 1) {
-        int x = i * 2;
-    }
-
-    int j = 0;
-    while (j < 5) {
-        j = j + 1;
-    }
-
-    return 0;
+// ---- 1. КЛЮЧЕВЫЕ СЛОВА ----
+fn main() -> void {
+    int a = 10;
+    float b = 3.14;
+    bool c = true;
+    bool d = false;
+    string s = "hello";
+    return;
 }
+
+// ---- 2. ТИПЫ ДАННЫХ И ПЕРЕМЕННЫЕ ----
+int integer = 42;
+float floating = 3.14159;
+bool boolean = true;
+string str = "Hello, World!";
+
+// ---- 3. АРИФМЕТИЧЕСКИЕ ОПЕРАТОРЫ ----
+int sum = 10 + 5;
+int diff = 10 - 5;
+int prod = 10 * 5;
+int quot = 10 / 5;
+int rem = 10 % 5;
+
+// ---- 4. ОПЕРАТОРЫ СРАВНЕНИЯ ----
+bool eq = a == b;
+bool ne = a != b;
+bool lt = a < b;
+bool gt = a > b;
+bool le = a <= b;
+bool ge = a >= b;
+
+// ---- 5. ЛОГИЧЕСКИЕ ОПЕРАТОРЫ ----
+bool and = x && y;
+bool or = x || y;
+bool not = !flag;
+
+// ---- 6. ПРИСВАИВАНИЕ ----
+x = 10;
+y = x + 5;
+
+// ---- 7. СОСТАВНЫЕ ОПЕРАТОРЫ ПРИСВАИВАНИЯ ----
+x += 5;
+y -= 3;
+z *= 2;
+a /= 4;
+b %= 2;
+
+// ---- 8. ОТРИЦАТЕЛЬНЫЕ ЧИСЛА ----
+int neg1 = -42;
+int neg2 = -100;
+float neg3 = -3.14;
+int sub = 5 - 3;
+int complex_neg = -5 + 3;
+
+// ---- 9. СКОБКИ И ПРИОРИТЕТЫ ----
+int result = (a + b) * (c - d);
+
+// ---- 10. КОММЕНТАРИИ ----
+// Однострочный комментарий
+
+/* Многострочный
+   комментарий
+   на несколько строк */
+
+// ---- 11. СТРУКТУРЫ ----
+struct Point {
+    int x;
+    int y;
+};
+
+struct Rectangle {
+    Point topLeft;
+    Point bottomRight;
+};
+
+// ---- 12. ФУНКЦИИ ----
+// Функция без параметров
+fn simple() -> void {
+    return;
+}
+
+// Функция с параметрами
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+// Рекурсивная функция
+fn factorial(int n) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+// ---- 13. УПРАВЛЯЮЩИЕ КОНСТРУКЦИИ ----
+// if-else
+if (x > 0) {
+    y = 1;
+} else {
+    y = -1;
+}
+
+// вложенный if
+if (x > 0) {
+    if (x > 10) {
+        y = 2;
+    } else {
+        y = 1;
+    }
+} else {
+    y = 0;
+}
+
+// while цикл
+while (i < 10) {
+    i = i + 1;
+}
+
+// for цикл
+for (int i = 0; i < 10; i = i + 1) {
+    sum = sum + i;
+}
+
+// пустые операторы
+;;;
+
+// пустые блоки
+if (condition) {}
+while (false) {}
+
+// ---- 14. ВЫЗОВЫ ФУНКЦИЙ ----
+int result1 = add(5, 3);
+print("Hello");
+print(factorial(5));
+
+// ---- 15. СЛОЖНЫЕ ВЫРАЖЕНИЯ ----
+int complex = (a + b) * (c - d) / 2;
+bool logic = (x > 5) && (y < 10) || (z == 0);
+int mixed = -!flag * (a + b) % 3;
+
+// ---- 16. ГРАНИЧНЫЕ ЗНАЧЕНИЯ ----
+int max_int = 2147483647;
+int min_int = -2147483648;
+float max_float = 3.4028235e38;
+float min_float = 1.1754944e-38;
+
+// ---- 17. СТРОКОВЫЕ ЛИТЕРАЛЫ ----
+string empty = "";
+string simple = "text";
+string with_spaces = "text with spaces";
+string with_special = "!@#$%^&*()";
+
+// ---- 18. ЦЕПОЧКИ ПРИСВАИВАНИЙ ----
+a = b = c = 42;
+
+// ---- 19. УНАРНЫЕ ОПЕРАЦИИ ----
+int unary1 = -5;
+bool unary2 = !flag;
+int unary3 = -!x;
+
+// ---- 20. ВСЕ ОПЕРАТОРЫ ВМЕСТЕ ----
+int ops = 1 + 2 - 3 * 4 / 5 % 6;
+bool comps = 1 < 2 && 3 > 4 || 5 <= 6 && 7 >= 8 || 9 == 10 && 11 != 12;
+
+return 0;

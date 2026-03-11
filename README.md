@@ -1,6 +1,8 @@
-# MiniCompiler — Лексический анализатор (Спринт 1)
+# MiniCompiler — Лексический анализатор и парсер (Спринт 2)
 
-Учебный проект компилятора для упрощенного C-подобного языка. Реализован лексический анализатор (сканер), который преобразует исходный код в последовательность токенов.
+Учебный проект компилятора для упрощенного C-подобного языка. 
+Реализован лексический анализатор (сканер) и рекурсивный парсер, 
+строящий абстрактное синтаксическое дерево (AST).
 
 ---
 
@@ -18,16 +20,25 @@ compiler-project/
 │   └── token.py                                  # Определения токенов и их типов
 │
 │
+├── parser/                                        # Парсер
+│   ├── init.py
+│   ├── ast.py                                     # Классы AST узлов
+│   ├── parser.py                                  # Основной парсер
+│   ├── visitor.py                                 # Базовый Visitor
+│   ├── pretty_printer.py                          # Красивый вывод AST
+│   ├── dot_generator.py                           # Генерация Graphviz DOT
+│   └── json_generator.py                          # JSON вывод 
+│
+│
 ├── tests/                                        # Тесты
 │   ├── init.py
 │   ├── test_lexer.py                             # Модульные тесты
+│   ├── test_parser.py                            # Тесты парсера
+│   ├── test_file_comparison.py                   # Сравнение с эталонами
+│   ├── test_runner.py                            # Запуск тестов
 │   └── lexer/                                    # Тестовые файлы
 │       ├── valid/                                # Валидные тестовые примеры
-│       │   ├── test_basic.src
-│       │   └── test_operators.src
 │       └── invalid/                              # Невалидные тестовые примеры
-│           ├── test_invalid_char.src
-│           └── test_unterminated_string.src
 │
 │
 ├── docs/                                         # Документация
@@ -35,12 +46,56 @@ compiler-project/
 │
 │
 ├── examples/                                     # Примеры кода
-│   └── test_full.src
+│   ├── test_full.src
+│   └── test_short.src
 │
 │
 ├── requirements.txt                              # Зависимости проекта
 ├── setup.py                                      # Установочный файл
 └── README.md                                     # Этот файл
+```
+
+---
+
+## Использование
+
+### Лексический анализ
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode lex
+```
+
+### Парсинг с указанием формата вывода
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode parse --ast-format text
+```
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode parse --ast-format dot --output ast.dot
+```
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode parse --ast-format json --output ast.json
+```
+
+---
+
+## Пример вывода AST
+
+```
+Program [line 1]:
+  FunctionDecl: main -> void [line 1]:
+    Parameters: []
+    Body [line 1]:
+      Block [line 2-5]:
+        VarDecl: int x = [line 3]:
+          Literal: 42 [line 3]
+        Return [line 4]: void
 ```
 
 ---

@@ -25,6 +25,11 @@ class TokenType(Enum):
     SLASH = auto()  # /
     PERCENT = auto()  # %
     ASSIGN = auto()  # =
+    PLUS_ASSIGN = auto()  # +=
+    MINUS_ASSIGN = auto()  # -=
+    STAR_ASSIGN = auto()  # *=
+    SLASH_ASSIGN = auto()  # /=
+    PERCENT_ASSIGN = auto()  # %=
     EQ_EQ = auto()  # ==
     NOT_EQ = auto()  # !=
     LESS = auto()  # <
@@ -35,12 +40,17 @@ class TokenType(Enum):
     AND_AND = auto()  # &&
     OR = auto()  # |
     OR_OR = auto()  # ||
+    NOT = auto()  # ! (логическое НЕ)
+    ARROW = auto()  # ->
+    DOT = auto()   # . (доступ к полям)
 
     # Delimiters
     LPAREN = auto()  # (
     RPAREN = auto()  # )
     LBRACE = auto()  # {
     RBRACE = auto()  # }
+    LBRACKET = auto()  # [
+    RBRACKET = auto()  # ]
     SEMICOLON = auto()  # ;
     COMMA = auto()  # ,
 
@@ -116,7 +126,15 @@ OPERATORS = {
     '&': TokenType.AND,
     '&&': TokenType.AND_AND,
     '|': TokenType.OR,
-    '||': TokenType.OR_OR
+    '||': TokenType.OR_OR,
+    '!': TokenType.NOT,
+    '->': TokenType.ARROW,
+    '+=': TokenType.PLUS_ASSIGN,
+    '-=': TokenType.MINUS_ASSIGN,
+    '*=': TokenType.STAR_ASSIGN,
+    '/=': TokenType.SLASH_ASSIGN,
+    '%=': TokenType.PERCENT_ASSIGN,
+    '.': TokenType.DOT,  # оператор доступа к полям
 }
 
 # Разделители
@@ -125,6 +143,8 @@ DELIMITERS = {
     ')': TokenType.RPAREN,
     '{': TokenType.LBRACE,
     '}': TokenType.RBRACE,
+    '[': TokenType.LBRACKET,
+    ']': TokenType.RBRACKET,
     ';': TokenType.SEMICOLON,
     ',': TokenType.COMMA
 }

@@ -42,7 +42,7 @@ class Scanner:
                 # Многострочный комментарий
                 self._skip_multi_line_comment()
             else:
-                self._add_operator_token(char)
+                self._read_operator(char)
         elif char == '"':
             self._read_string()
         elif char.isdigit():
@@ -51,16 +51,34 @@ class Scanner:
             # Проверяем, является ли это отрицательным числом
             if self._is_negative_number():
                 self._read_number()
+            elif self._peek() == '>':  # Проверяем на ->
+                self._read_operator(char)
+            elif self._peek() == '=':  # Проверяем на -=
+                self._read_operator(char)
             else:
-                self._add_operator_token(char)
+                self._read_operator(char)
         elif char.isalpha() or char == '_':
             self._read_identifier()
-        elif char in '+-*/%=<>!&|':  # Все операторы (кроме '-', который обработан выше)
+        elif char in '+-*/%=<>!&|':  # Все операторы
             self._read_operator(char)
         elif char in '(){};,':
             self._add_delimiter_token(char)
+        elif char == '[' or char == ']':
+            # Добавляем поддержку квадратных скобок
+            self._add_delimiter_token(char)
+        elif char == '.':
+            # Проверяем, является ли точка частью числа
+            if self._peek().isdigit():
+                # Это начало дробной части без целой части? Обработаем как число
+                # Метод _read_number сам выдаст ошибку InvalidNumberError
+                self._read_number()
+            else:
+                # Это оператор доступа к полям структур
+                # Добавляем токен DOT
+                self._add_token(TokenType.DOT, '.')
         else:
             # Недопустимый символ
+            from .errors import InvalidCharacterError
             error = InvalidCharacterError(char, self.line, self.column - 1)
             self.errors.append(error)
             self._add_token(TokenType.INVALID, char)
@@ -217,7 +235,7 @@ class Scanner:
         self._add_token(TokenType.STRING_LITERAL, literal=string_value)
 
     def _read_number(self):
-        """Читает числовой литерал (int или float)"""
+        """Читает числовой литерал (int или float) с поддержкой научной нотации"""
         is_float = False
         start_line = self.line
         start_column = self.column - len(self.source[self.start:self.current])
@@ -238,6 +256,28 @@ class Scanner:
             self._advance()  # Пропускаем точку
 
             # Должна быть хотя бы одна цифра после точки
+            if not self.is_at_end() and self._peek().isdigit():
+                while not self.is_at_end() and self._peek().isdigit():
+                    self._advance()
+            else:
+                self.errors.append(InvalidNumberError(
+                    self.source[self.start:self.current],
+                    self.line,
+                    self.column
+                ))
+                self._add_token(TokenType.INVALID, self.source[self.start:self.current])
+                return
+
+        # Проверяем на научную нотацию (e или E)
+        if not self.is_at_end() and (self._peek() == 'e' or self._peek() == 'E'):
+            is_float = True
+            self._advance()  # Пропускаем e/E
+
+            # Может быть знак после e
+            if not self.is_at_end() and (self._peek() == '+' or self._peek() == '-'):
+                self._advance()
+
+            # После e должна быть хотя бы одна цифра
             if not self.is_at_end() and self._peek().isdigit():
                 while not self.is_at_end() and self._peek().isdigit():
                     self._advance()
@@ -306,8 +346,21 @@ class Scanner:
 
     def _read_operator(self, first_char: str):
         """Читает оператор (включая двухсимвольные)"""
-        # Сначала проверяем двухсимвольные операторы
-        if first_char == '=' and self._match('='):
+        # Сначала проверяем все двухсимвольные операторы
+        # ВАЖНО: сначала проверяем составные операторы с '=', потом одиночные
+
+        # Проверяем все операторы с '=' (самые длинные)
+        if first_char == '+' and self._match('='):
+            self._add_token(TokenType.PLUS_ASSIGN, '+=')
+        elif first_char == '-' and self._match('='):
+            self._add_token(TokenType.MINUS_ASSIGN, '-=')
+        elif first_char == '*' and self._match('='):
+            self._add_token(TokenType.STAR_ASSIGN, '*=')
+        elif first_char == '/' and self._match('='):
+            self._add_token(TokenType.SLASH_ASSIGN, '/=')
+        elif first_char == '%' and self._match('='):
+            self._add_token(TokenType.PERCENT_ASSIGN, '%=')
+        elif first_char == '=' and self._match('='):
             self._add_token(TokenType.EQ_EQ, '==')
         elif first_char == '!' and self._match('='):
             self._add_token(TokenType.NOT_EQ, '!=')
@@ -319,15 +372,37 @@ class Scanner:
             self._add_token(TokenType.AND_AND, '&&')
         elif first_char == '|' and self._match('|'):
             self._add_token(TokenType.OR_OR, '||')
+        elif first_char == '-' and self._match('>'):  # стрелка
+            self._add_token(TokenType.ARROW, '->')
+        # Односимвольные операторы
+        elif first_char == '!':
+            self._add_token(TokenType.NOT, '!')
+        elif first_char == '+':
+            self._add_token(TokenType.PLUS, '+')
+        elif first_char == '-':
+            self._add_token(TokenType.MINUS, '-')
+        elif first_char == '*':
+            self._add_token(TokenType.STAR, '*')
+        elif first_char == '/':
+            self._add_token(TokenType.SLASH, '/')
+        elif first_char == '%':
+            self._add_token(TokenType.PERCENT, '%')
+        elif first_char == '=':
+            self._add_token(TokenType.ASSIGN, '=')
+        elif first_char == '<':
+            self._add_token(TokenType.LESS, '<')
+        elif first_char == '>':
+            self._add_token(TokenType.GREATER, '>')
+        elif first_char == '&':
+            self._add_token(TokenType.AND, '&')
+        elif first_char == '|':
+            self._add_token(TokenType.OR, '|')
         else:
-            # Односимвольный оператор
-            if first_char in OPERATORS:
-                self._add_token(OPERATORS[first_char], first_char)
-            else:
-                # Если символ не найден в операторах, добавляем как INVALID
-                error = InvalidCharacterError(first_char, self.line, self.column - 1)
-                self.errors.append(error)
-                self._add_token(TokenType.INVALID, first_char)
+            # Если символ не найден в операторах, добавляем как INVALID
+            from .errors import InvalidCharacterError
+            error = InvalidCharacterError(first_char, self.line, self.column - 1)
+            self.errors.append(error)
+            self._add_token(TokenType.INVALID, first_char)
 
     def next_token(self) -> Token:
         """Возвращает следующий токен и продвигает указатель"""
