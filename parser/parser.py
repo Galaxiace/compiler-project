@@ -416,13 +416,11 @@ class Parser:
         Предполагается, что открывающая скобка { уже потреблена
         """
         token = self.previous()  # токен { (уже потреблен)
-        print(f"DEBUG: Начало блока на строке {token.line}")
 
         statements = []
 
         # Парсим операторы до закрывающей скобки
         while not self.check(TokenType.RBRACE) and not self.is_at_end():
-            print(f"DEBUG: В блоке, текущий токен: {self.peek().type.name}")
             try:
                 stmt = self.parse_statement()
                 statements.append(stmt)
@@ -432,10 +430,8 @@ class Parser:
 
         # Проверяем наличие закрывающей скобки
         if self.check(TokenType.RBRACE):
-            print(f"DEBUG: Найдена закрывающая скобка")
             self.advance()  # потребляем RBRACE
         else:
-            print(f"DEBUG: Закрывающая скобка не найдена!")
             # Достигнут конец файла без закрывающей скобки
             self.error("Ожидалась '}' после блока", self.previous())
 

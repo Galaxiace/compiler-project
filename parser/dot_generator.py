@@ -47,6 +47,18 @@ class DotGenerator(Visitor):
         self.node_counter += 1
         return self.node_counter
 
+    def _format_location(self, node: ASTNode) -> str:
+        """
+        Форматирует позицию узла в виде строка:колонка.
+
+        Args:
+            node: Узел AST
+
+        Returns:
+            str: Строка вида [line:column]
+        """
+        return f"[{node.line}:{node.column}]"
+
     def _add_node(self, node: ASTNode, label: str) -> int:
         """
         Добавляет узел в граф.
@@ -97,6 +109,7 @@ class DotGenerator(Visitor):
             "digraph AST {",
             "    node [fontname=\"Arial\"];",
             "    edge [fontname=\"Arial\"];",
+            "    graph [fontname=\"Arial\"];",
             "    rankdir=TB;",
             ""
         ]
@@ -112,7 +125,8 @@ class DotGenerator(Visitor):
     # ============= Методы визитера =============
 
     def visit_program(self, node: ProgramNode) -> Any:
-        node_id = self._add_node(node, f"Program\n[line {node.line}]")
+        label = f"Program {self._format_location(node)}"
+        node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
         for decl in node.declarations:
@@ -121,7 +135,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_function_decl(self, node: FunctionDeclNode) -> Any:
-        label = f"Function: {node.name}\n-> {node.return_type}\n[line {node.line}]"
+        label = f"Function: {node.name} -> {node.return_type} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -135,7 +149,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_struct_decl(self, node: StructDeclNode) -> Any:
-        label = f"Struct: {node.name}\n[line {node.line}]"
+        label = f"Struct: {node.name} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -146,9 +160,9 @@ class DotGenerator(Visitor):
 
     def visit_var_decl(self, node: VarDeclNode) -> Any:
         if node.initializer:
-            label = f"Var: {node.type_name} {node.name} =\n[line {node.line}]"
+            label = f"Var: {node.type_name} {node.name} = {self._format_location(node)}"
         else:
-            label = f"Var: {node.type_name} {node.name}\n[line {node.line}]"
+            label = f"Var: {node.type_name} {node.name} {self._format_location(node)}"
 
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
@@ -159,13 +173,24 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_param(self, node: ParamNode) -> Any:
-        label = f"Param: {node.type_name} {node.name}\n[line {node.line}]"
+        label = f"Param: {node.type_name} {node.name} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
         self.node_stack.pop()
 
     def visit_block(self, node: BlockStmtNode) -> Any:
-        label = f"Block\n[line {node.line}]"
+        # Для блока показываем диапазон строк, если есть вложенные операторы
+        last_line = node.line
+        if node.statements:
+            for stmt in node.statements:
+                if hasattr(stmt, 'line') and stmt.line > last_line:
+                    last_line = stmt.line
+
+        if last_line == node.line:
+            label = f"Block {self._format_location(node)}"
+        else:
+            label = f"Block [{node.line}:{node.column}-{last_line}]"
+
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -175,7 +200,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_if(self, node: IfStmtNode) -> Any:
-        label = f"If\n[line {node.line}]"
+        label = f"If {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -192,7 +217,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_while(self, node: WhileStmtNode) -> Any:
-        label = f"While\n[line {node.line}]"
+        label = f"While {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -202,7 +227,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_for(self, node: ForStmtNode) -> Any:
-        label = f"For\n[line {node.line}]"
+        label = f"For {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -218,9 +243,9 @@ class DotGenerator(Visitor):
 
     def visit_return(self, node: ReturnStmtNode) -> Any:
         if node.value:
-            label = f"Return\n[line {node.line}]"
+            label = f"Return {self._format_location(node)}"
         else:
-            label = f"Return void\n[line {node.line}]"
+            label = f"Return void {self._format_location(node)}"
 
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
@@ -231,7 +256,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_expr_stmt(self, node: ExprStmtNode) -> Any:
-        label = f"ExprStmt\n[line {node.line}]"
+        label = f"ExprStmt {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -240,7 +265,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_empty_stmt(self, node: EmptyStmtNode) -> Any:
-        label = f"EmptyStmt\n[line {node.line}]"
+        label = f"EmptyStmt {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
         self.node_stack.pop()
@@ -254,19 +279,19 @@ class DotGenerator(Visitor):
         elif isinstance(node.value, bool):
             value_str = "true" if node.value else "false"
 
-        label = f"Literal: {value_str}\n[line {node.line}]"
+        label = f"Literal: {value_str} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
         self.node_stack.pop()
 
     def visit_identifier(self, node: IdentifierExprNode) -> Any:
-        label = f"Identifier: {node.name}\n[line {node.line}]"
+        label = f"Identifier: {node.name} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
         self.node_stack.pop()
 
     def visit_binary(self, node: BinaryExprNode) -> Any:
-        label = f"Binary: {node.operator}\n[line {node.line}]"
+        label = f"Binary: {node.operator} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -276,7 +301,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_unary(self, node: UnaryExprNode) -> Any:
-        label = f"Unary: {node.operator}\n[line {node.line}]"
+        label = f"Unary: {node.operator} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -285,7 +310,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_call(self, node: CallExprNode) -> Any:
-        label = f"Call\n[line {node.line}]"
+        label = f"Call {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -297,7 +322,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_assignment(self, node: AssignmentExprNode) -> Any:
-        label = f"Assignment: {node.operator}\n[line {node.line}]"
+        label = f"Assignment: {node.operator} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -307,7 +332,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_grouping(self, node: GroupingExprNode) -> Any:
-        label = f"Grouping\n[line {node.line}]"
+        label = f"Grouping {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 
@@ -316,7 +341,7 @@ class DotGenerator(Visitor):
         self.node_stack.pop()
 
     def visit_cast(self, node: CastExprNode) -> Any:
-        label = f"Cast: {node.type_name}\n[line {node.line}]"
+        label = f"Cast: {node.type_name} {self._format_location(node)}"
         node_id = self._add_node(node, label)
         self.node_stack.append(node_id)
 

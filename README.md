@@ -1,8 +1,8 @@
-# MiniCompiler — Лексический анализатор и парсер (Спринт 2)
+# MiniCompiler — Спринт 3: Семантический анализ
+
 
 Учебный проект компилятора для упрощенного C-подобного языка. 
-Реализован лексический анализатор (сканер) и рекурсивный парсер, 
-строящий абстрактное синтаксическое дерево (AST).
+Реализованы лексический анализатор, рекурсивный парсер и семантический анализатор.
 
 ---
 
@@ -13,21 +13,30 @@ compiler-project/
 │
 │
 ├── lexer/                                        # Основной пакет лексера
-│   ├── init.py                                   # Делает директорию пакетом Python
+│   ├── init.py
 │   ├── cli.py                                    # Интерфейс командной строки
 │   ├── errors.py                                 # Классы ошибок лексического анализа
 │   ├── scanner.py                                # Основная логика сканера
 │   └── token.py                                  # Определения токенов и их типов
 │
 │
-├── parser/                                        # Парсер
+├── parser/                                       # Парсер
 │   ├── init.py
-│   ├── ast.py                                     # Классы AST узлов
-│   ├── parser.py                                  # Основной парсер
-│   ├── visitor.py                                 # Базовый Visitor
-│   ├── pretty_printer.py                          # Красивый вывод AST
-│   ├── dot_generator.py                           # Генерация Graphviz DOT
-│   └── json_generator.py                          # JSON вывод 
+│   ├── ast.py                                    # Классы AST узлов
+│   ├── parser.py                                 # Основной парсер
+│   ├── visitor.py                                # Базовый Visitor
+│   ├── pretty_printer.py                         # Красивый вывод AST
+│   ├── dot_generator.py                          # Генерация Graphviz DOT
+│   └── json_generator.py                         # JSON вывод 
+│
+│
+├── semantic/                                     # Семантический анализатор
+│   ├── init.py
+│   ├── analyzer.py                               # Основной анализатор
+│   ├── decorated_ast.py                          # Декорированное AST
+│   ├── errors.py                                 # Семантические ошибки
+│   ├── symbol_table.py                           # Таблица символов
+│   ├── type_system.py                            # Система типов и совместимость
 │
 │
 ├── tests/                                        # Тесты
@@ -36,13 +45,15 @@ compiler-project/
 │   ├── test_parser.py                            # Тесты парсера
 │   ├── test_file_comparison.py                   # Сравнение с эталонами
 │   ├── test_runner.py                            # Запуск тестов
+│   ├── test_semantic.py                          # Тесты семантики
 │   └── lexer/                                    # Тестовые файлы
 │       ├── valid/                                # Валидные тестовые примеры
 │       └── invalid/                              # Невалидные тестовые примеры
 │
 │
 ├── docs/                                         # Документация
-│   └── language_spec.md                          # Спецификация языка
+│   ├── language_spec.md                          # Спецификация языка
+│   └── grammar.md 
 │
 │
 ├── examples/                                     # Примеры кода
@@ -81,6 +92,22 @@ python -m lexer.cli --input examples/test_short.src --mode parse --ast-format do
 ```bash
 
 python -m lexer.cli --input examples/test_short.src --mode parse --ast-format json --output ast.json
+```
+
+### Опции семантического анализа
+
+#### Подробный вывод
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode semantic --verbose
+```
+
+#### Сохранить отчет в файл
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode semantic --output report.txt
 ```
 
 ---
