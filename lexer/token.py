@@ -38,6 +38,7 @@ class TokenType(Enum):
     GREATER_EQ = auto()  # >=
     AND = auto()  # &
     AND_AND = auto()  # &&
+    XOR = auto()  # ^
     OR = auto()  # |
     OR_OR = auto()  # ||
     NOT = auto()  # ! (логическое НЕ)
@@ -125,6 +126,7 @@ OPERATORS = {
     '>=': TokenType.GREATER_EQ,
     '&': TokenType.AND,
     '&&': TokenType.AND_AND,
+    '^': TokenType.XOR,
     '|': TokenType.OR,
     '||': TokenType.OR_OR,
     '!': TokenType.NOT,

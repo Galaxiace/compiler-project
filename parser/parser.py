@@ -1,3 +1,4 @@
+# parser/parser.py
 from typing import List, Optional, Union, Any
 from lexer.token import Token, TokenType
 from lexer.errors import LexicalError
@@ -568,11 +569,24 @@ class Parser:
 
     def parse_logical_or(self) -> ExpressionNode:
         """
-        LogicalOr ::= LogicalAnd { "||" LogicalAnd }
+        LogicalOr ::= LogicalXor { "||" LogicalXor }
+        """
+        expr = self.parse_logical_xor()
+
+        while self.match(TokenType.OR_OR):
+            operator = self.previous().lexeme
+            right = self.parse_logical_xor()
+            expr = BinaryExprNode(expr, operator, right, expr.line, expr.column)
+
+        return expr
+
+    def parse_logical_xor(self) -> ExpressionNode:
+        """
+        LogicalXor ::= LogicalAnd { "^" LogicalAnd }
         """
         expr = self.parse_logical_and()
 
-        while self.match(TokenType.OR_OR):
+        while self.match(TokenType.XOR):
             operator = self.previous().lexeme
             right = self.parse_logical_and()
             expr = BinaryExprNode(expr, operator, right, expr.line, expr.column)
@@ -646,19 +660,19 @@ class Parser:
 
     def parse_unary(self) -> ExpressionNode:
         """
-        Unary ::= ("-" | "!" | "+") Unary | Primary
+        Unary ::= ("-" | "!" | "+") Unary | Postfix
         """
         if self.match(TokenType.MINUS, TokenType.NOT, TokenType.PLUS):
-            token = self.previous()  # Получаем токен, а не строку
+            token = self.previous()
             operator = token.lexeme
             operand = self.parse_unary()
             return UnaryExprNode(operator, operand, token.line, token.column)
 
-        return self.parse_primary()
+        return self.parse_postfix()
 
     def parse_primary(self) -> ExpressionNode:
         """
-        Primary ::= Literal | Identifier | "(" Expression ")" | Call | "(" Type ")" Expression
+        Primary ::= Literal | Identifier | "(" Expression ")"
         """
         token = self.peek()
 
@@ -679,33 +693,54 @@ class Parser:
 
         if self.match(TokenType.IDENTIFIER):
             name = token.lexeme
-
-            # Проверяем, не является ли идентификатор вызовом функции
-            if self.check(TokenType.LPAREN):
-                self.advance()  # потребляем LPAREN
-                return self.parse_call(name, token.line, token.column)
-
             return IdentifierExprNode(name, token.line, token.column)
 
         if self.match(TokenType.LPAREN):
-            # Сохраняем позицию
             line, column = token.line, token.column
 
-            # Проверяем на приведение типа (Type)
             if self.check(TokenType.IDENTIFIER) and self.check_next(TokenType.RPAREN):
-                # Приведение типа: (Type) Expression
                 type_token = self.advance()
                 self.consume(TokenType.RPAREN, "Ожидалась ')' после типа")
                 expr = self.parse_expression()
                 return CastExprNode(type_token.lexeme, expr, line, column)
             else:
-                # Группировка: ( Expression )
                 expr = self.parse_expression()
                 self.consume(TokenType.RPAREN, "Ожидалась ')' после выражения")
                 return GroupingExprNode(expr, line, column)
 
-        # Если ничего не подошло, генерируем ошибку
         raise self.error(f"Неожиданный токен в выражении: {token.type.name}", token)
+
+    def parse_postfix(self) -> ExpressionNode:
+        """
+        Postfix ::= Primary { "(" [ Arguments ] ")" | "." Identifier }
+        """
+        expr = self.parse_primary()
+
+        while True:
+            if self.match(TokenType.LPAREN):
+                # Вызов функции
+                arguments = []
+                if not self.check(TokenType.RPAREN):
+                    arguments.append(self.parse_expression())
+                    while self.match(TokenType.COMMA):
+                        arguments.append(self.parse_expression())
+                self.consume(TokenType.RPAREN, "Ожидалась ')' после аргументов")
+
+                if isinstance(expr, IdentifierExprNode):
+                    expr = CallExprNode(expr, arguments, expr.line, expr.column)
+                else:
+                    expr = CallExprNode(expr, arguments, expr.line, expr.column)
+
+            elif self.match(TokenType.DOT):
+                # Доступ к полю структуры
+                field_token = self.consume(TokenType.IDENTIFIER, "Ожидалось имя поля после '.'")
+                expr = BinaryExprNode(expr, '.',
+                                      IdentifierExprNode(field_token.lexeme, field_token.line, field_token.column),
+                                      expr.line, expr.column)
+            else:
+                break
+
+        return expr
 
     def check_next(self, token_type: TokenType) -> bool:
         """

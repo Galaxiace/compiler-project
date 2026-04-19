@@ -59,7 +59,7 @@ class Scanner:
                 self._read_operator(char)
         elif char.isalpha() or char == '_':
             self._read_identifier()
-        elif char in '+-*/%=<>!&|':  # Все операторы
+        elif char in '+-*/%=<>!&|^':  # Все операторы
             self._read_operator(char)
         elif char in '(){};,':
             self._add_delimiter_token(char)
@@ -70,11 +70,9 @@ class Scanner:
             # Проверяем, является ли точка частью числа
             if self._peek().isdigit():
                 # Это начало дробной части без целой части? Обработаем как число
-                # Метод _read_number сам выдаст ошибку InvalidNumberError
                 self._read_number()
             else:
                 # Это оператор доступа к полям структур
-                # Добавляем токен DOT
                 self._add_token(TokenType.DOT, '.')
         else:
             # Недопустимый символ
@@ -393,6 +391,8 @@ class Scanner:
             self._add_token(TokenType.LESS, '<')
         elif first_char == '>':
             self._add_token(TokenType.GREATER, '>')
+        elif first_char == '^':
+            self._add_token(TokenType.XOR, '^')
         elif first_char == '&':
             self._add_token(TokenType.AND, '&')
         elif first_char == '|':

@@ -1,0 +1,245 @@
+// examples/test_working.src
+// Рабочий тестовый пример (без структур)
+
+// ============= Глобальные переменные =============
+int global_counter = 0;
+float global_pi = 3.14159;
+bool global_flag = true;
+
+// ============= Простая функция =============
+fn add(int a, int b) -> int {
+    return a + b;
+}
+
+fn subtract(int a, int b) -> int {
+    return a - b;
+}
+
+fn multiply(int a, int b) -> int {
+    return a * b;
+}
+
+fn divide(int a, int b) -> int {
+    return a / b;
+}
+
+fn modulo(int a, int b) -> int {
+    return a % b;
+}
+
+// ============= Функция с float =============
+fn circle_area(float radius) -> float {
+    return 3.14159 * radius * radius;
+}
+
+// ============= Булевы операции =============
+fn is_positive(int x) -> bool {
+    return x > 0;
+}
+
+fn is_even(int x) -> bool {
+    return x % 2 == 0;
+}
+
+fn logical_operations(bool a, bool b) -> bool {
+    bool and_result = a && b;
+    bool or_result = a || b;
+    bool not_a = !a;
+    bool not_b = !b;
+    bool xor_result = (a && !b) || (!a && b);
+    return xor_result;
+}
+
+// ============= Сравнения =============
+fn compare_numbers(int x, int y) -> void {
+    bool eq = x == y;
+    bool ne = x != y;
+    bool lt = x < y;
+    bool le = x <= y;
+    bool gt = x > y;
+    bool ge = x >= y;
+    return;
+}
+
+// ============= Унарные операции =============
+fn unary_operations(int x, bool flag) -> int {
+    int neg = -x;
+    int pos = +x;
+    bool not_flag = !flag;
+    return neg;
+}
+
+// ============= Составные присваивания =============
+fn compound_assignments() -> int {
+    int x = 10;
+    x += 5;
+    x -= 3;
+    x *= 2;
+    x /= 4;
+    x %= 4;
+    return x;
+}
+
+// ============= Условный оператор =============
+fn if_statement(int x) -> int {
+    int result = 0;
+
+    if (x > 10) {
+        result = 100;
+    } else if (x > 5) {
+        result = 50;
+    } else if (x > 0) {
+        result = 10;
+    } else {
+        result = -1;
+    }
+
+    if (x == 0) {
+        return 0;
+    }
+
+    return result;
+}
+
+// ============= Цикл while =============
+fn while_loop(int n) -> int {
+    int sum = 0;
+    int i = 0;
+
+    while (i < n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+
+    return sum;
+}
+
+// ============= Цикл for =============
+fn for_loop(int n) -> int {
+    int factorial = 1;
+
+    for (int i = 1; i <= n; i = i + 1) {
+        factorial = factorial * i;
+    }
+
+    return factorial;
+}
+
+// ============= Вложенные циклы =============
+fn nested_loops(int rows, int cols) -> int {
+    int sum = 0;
+
+    for (int i = 0; i < rows; i = i + 1) {
+        for (int j = 0; j < cols; j = j + 1) {
+            sum = sum + i * j;
+        }
+    }
+
+    return sum;
+}
+
+// ============= Рекурсивная функция =============
+fn fibonacci(int n) -> int {
+    if (n <= 1) {
+        return n;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// ============= Вложенные вызовы функций =============
+fn compute(int a, int b, int c) -> int {
+    return add(multiply(a, b), c);
+}
+
+// ============= Функция с множеством локальных переменных =============
+fn many_variables() -> int {
+    int v1 = 1;
+    int v2 = 2;
+    int v3 = 3;
+    int v4 = 4;
+    int v5 = 5;
+    int v6 = 6;
+    int v7 = 7;
+    int v8 = 8;
+    int v9 = 9;
+    int v10 = 10;
+
+    int sum = v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10;
+    return sum;
+}
+
+// ============= Вложенные блоки =============
+fn nested_blocks(int x) -> int {
+    int outer = 10;
+
+    {
+        int inner = 20;
+        outer = outer + inner;
+
+        {
+            int deep = 30;
+            outer = outer + deep;
+        }
+
+        outer = outer + inner;
+    }
+
+    return outer + x;
+}
+
+// ============= Void функция =============
+fn print_value(int x) -> void {
+    int dummy = x;
+    return;
+}
+
+// ============= Функция без параметров =============
+fn get_answer() -> int {
+    return 42;
+}
+
+// ============= main функция =============
+fn main() -> int {
+    int sum = add(5, 3);
+    int diff = subtract(10, 4);
+    int prod = multiply(6, 7);
+    int quot = divide(20, 5);
+    int mod = modulo(17, 5);
+
+    float area = circle_area(5.0);
+
+    bool pos = is_positive(10);
+    bool even = is_even(4);
+    bool logic = logical_operations(true, false);
+
+    compare_numbers(10, 20);
+
+    int neg_val = unary_operations(5, true);
+
+    int compound = compound_assignments();
+
+    int if_result = if_statement(7);
+    int if_zero = if_statement(0);
+
+    int while_sum = while_loop(10);
+    int fact5 = for_loop(5);
+    int nested_sum = nested_loops(3, 4);
+
+    int fib7 = fibonacci(7);
+
+    int computed = compute(2, 3, 4);
+
+    int many = many_variables();
+
+    int blocks = nested_blocks(5);
+
+    print_value(42);
+
+    int answer = get_answer();
+
+    global_counter = global_counter + 1;
+
+    return sum + diff + prod + quot + mod +
+           if_result + if_zero + while_sum + fact5 +
+           nested_sum + fib7 + computed + many + blocks + answer;
+}

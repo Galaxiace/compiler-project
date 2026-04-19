@@ -1,8 +1,8 @@
-# MiniCompiler — Спринт 3: Семантический анализ
+# MiniCompiler — Спринт 4: Промежуточное представление
 
 
 Учебный проект компилятора для упрощенного C-подобного языка. 
-Реализованы лексический анализатор, рекурсивный парсер и семантический анализатор.
+Реализованы лексический анализатор, рекурсивный парсер, семантический анализатор и промежуточное представление.
 
 ---
 
@@ -39,11 +39,24 @@ compiler-project/
 │   ├── type_system.py                            # Система типов и совместимость
 │
 │
+├── ir/                                           # Промежуточное представление
+│   ├── __init__.py                               
+│   ├── ir_instructions.py                        # IROpcode, IROperand, IRInstruction
+│   ├── basic_block.py                            # BasicBlock
+│   ├── control_flow.py                           # IRFunction, IRProgram
+│   ├── ir_generator.py                           # IRGenerator (из AST)
+│   ├── ir_writer.py                              # Текстовый вывод
+│   ├── dot_generator.py                          # DOT для Graphviz
+│   ├── json_generator.py                         # JSON вывод
+│   └── validator.py                              # Валидатор IR
+│
+│
 ├── tests/                                        # Тесты
 │   ├── init.py
 │   ├── test_lexer.py                             # Модульные тесты
 │   ├── test_parser.py                            # Тесты парсера
 │   ├── test_file_comparison.py                   # Сравнение с эталонами
+│   ├── test_ir.py                                # Тесты IR
 │   ├── test_runner.py                            # Запуск тестов
 │   ├── test_semantic.py                          # Тесты семантики
 │   └── lexer/                                    # Тестовые файлы
@@ -57,6 +70,7 @@ compiler-project/
 │
 │
 ├── examples/                                     # Примеры кода
+│   ├── test_complete.src
 │   ├── test_full.src
 │   └── test_short.src
 │
@@ -108,6 +122,65 @@ python -m lexer.cli --input examples/test_short.src --mode semantic --verbose
 ```bash
 
 python -m lexer.cli --input examples/test_short.src --mode semantic --output report.txt
+```
+
+### Генерация промежуточного представления (IR)
+
+#### Генерация IR в текстовом формате
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir
+```
+
+#### Сохранение IR в файл
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --output test_short.ir
+```
+
+#### Генерация IR в формате JSON
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --ir-format json
+```
+
+#### Генерация Control Flow Graph (CFG) в формате DOT
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --ir-format dot --output test_short.dot
+```
+
+#### Визуализация CFG (требуется Graphviz)
+
+```bash
+
+# Генерация PNG из DOT файла
+dot -Tpng test_short.dot > test_short_cfg.png 2>/dev/null
+```
+
+#### Генерация IR со статистикой
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --stats
+```
+
+#### Валидация IR
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --validate
+```
+
+#### Подробный вывод с отчетом
+
+```bash
+
+python -m lexer.cli --input examples/test_short.src --mode ir --verbose
 ```
 
 ---

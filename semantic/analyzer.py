@@ -618,11 +618,76 @@ class SemanticAnalyzer(Visitor):
                 return field.line
         return struct_node.line
 
+    # semantic/analyzer.py
+
     def _build_decorated_ast(self, ast: ProgramNode) -> DecoratedProgram:
         """Строит декорированное AST."""
         decorated = DecoratedProgram(ast, self.symbol_table)
+
+        # Заполняем declarations
+        for decl in ast.declarations:
+            if isinstance(decl, FunctionDeclNode):
+                func_info = self.symbol_table.lookup(decl.name)
+                if func_info:
+                    # Создаем декорированную функцию
+                    decorated_func = self._decorate_function(decl, func_info)
+                    decorated.declarations.append(decorated_func)
+            elif isinstance(decl, StructDeclNode):
+                struct_info = self.symbol_table.lookup(decl.name)
+                if struct_info:
+                    decorated_struct = self._decorate_struct(decl, struct_info)
+                    decorated.declarations.append(decorated_struct)
+            elif isinstance(decl, VarDeclNode):
+                var_info = self.symbol_table.lookup(decl.name)
+                if var_info:
+                    decorated_var = self._decorate_var(decl, var_info)
+                    decorated.declarations.append(decorated_var)
+
         self.decorated_program = decorated
         return decorated
+
+    def _decorate_function(self, node: FunctionDeclNode, func_info: SymbolInfo) -> DecoratedFunction:
+        """Создает декорированную функцию."""
+        from semantic.decorated_ast import DecoratedFunction, DecoratedParam, DecoratedBlock
+
+        # Параметры
+        params = []
+        for param in node.parameters:
+            param_info = self.symbol_table.lookup(param.name)
+            if param_info:
+                param_type = self._get_type_from_name(param.type_name)
+                if not param_type:
+                    param_type = self._lookup_struct_type(param.type_name)
+                decorated_param = DecoratedParam(param, param_type or Type('void'), param_info)
+                params.append(decorated_param)
+
+        # Тело (упрощенно - создаем пустой блок, так как тело уже проанализировано)
+        body = DecoratedBlock(node.body, [])
+
+        return_type = func_info.return_type_node or self.builtin_types['void']
+        return DecoratedFunction(node, return_type, params, body, func_info)
+
+    def _decorate_struct(self, node: StructDeclNode, struct_info: SymbolInfo) -> DecoratedStruct:
+        """Создает декорированную структуру."""
+        from semantic.decorated_ast import DecoratedStruct, DecoratedVar
+
+        fields = []
+        for field in node.fields:
+            field_info = self.symbol_table.lookup(field.name)
+            if field_info:
+                field_type = field_info.type
+                decorated_field = DecoratedVar(field, field_type, None, field_info)
+                fields.append(decorated_field)
+
+        return DecoratedStruct(node, fields, struct_info)
+
+    def _decorate_var(self, node: VarDeclNode, var_info: SymbolInfo) -> DecoratedVar:
+        """Создает декорированную переменную."""
+        from semantic.decorated_ast import DecoratedVar
+
+        var_type = var_info.type
+        # initializer будет None, так как мы не анализируем его здесь
+        return DecoratedVar(node, var_type, None, var_info)
 
     def get_errors(self) -> List[SemanticError]:
         """Возвращает список семантических ошибок."""

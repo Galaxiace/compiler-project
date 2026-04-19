@@ -43,6 +43,7 @@ class TypeCompatibility:
     @classmethod
     def get_binary_result_type(cls, left: Type, right: Type, operator: str) -> Optional[Type]:
         """Определяет результирующий тип бинарной операции."""
+        # Арифметические операторы
         if operator in ('+', '-', '*', '/', '%'):
             numeric_types = {'int', 'float'}
             if left.name not in numeric_types or right.name not in numeric_types:
@@ -52,11 +53,19 @@ class TypeCompatibility:
                 return Type('float')
             return Type('int')
 
+        # Логические операторы
         if operator in ('&&', '||'):
             if left.name == 'bool' and right.name == 'bool':
                 return Type('bool')
             return None
 
+        # Оператор XOR (^) - побитовый, работает с int
+        if operator == '^':
+            if left.name == 'int' and right.name == 'int':
+                return Type('int')
+            return None
+
+        # Операторы сравнения
         if operator in ('==', '!=', '<', '<=', '>', '>='):
             if cls.can_compare(left, right, operator):
                 return Type('bool')
