@@ -51,6 +51,15 @@ compiler-project/
 │   └── validator.py                              # Валидатор IR
 │
 │
+├── codegen/                                      # x86-64 Кодогенерация
+│   ├── stack_frame.py                            # Управление стековым фреймом (выделение, смещения, выравнивание)   
+│   └── x86_generator.py                          # Генератор NASM-кода из IR (System V AMD64 ABI)
+│
+│
+├── runtime/                                      # Runtime библиотека
+│   └── runtime.asm                               # print_int, print_string, read_int, exit, _start
+│
+│
 ├── tests/                                        # Тесты
 │   ├── init.py
 │   ├── test_lexer.py                             # Модульные тесты
@@ -59,6 +68,12 @@ compiler-project/
 │   ├── test_ir.py                                # Тесты IR
 │   ├── test_runner.py                            # Запуск тестов
 │   ├── test_semantic.py                          # Тесты семантики
+│   │
+│   ├── codegen/                                  # Тесты кодогенерации
+│   │   ├── valid/                                # Валидные тестовые примеры
+│   │   ├── invalid/                              # Невалидные тестовые примеры 
+│   │   └── run_tests.sh                          # Скрипт автоматического тестирования
+│   │
 │   └── lexer/                                    # Тестовые файлы
 │       ├── valid/                                # Валидные тестовые примеры
 │       └── invalid/                              # Невалидные тестовые примеры
