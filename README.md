@@ -183,6 +183,42 @@ python -m lexer.cli --input examples/test_short.src --mode ir --validate
 python -m lexer.cli --input examples/test_short.src --mode ir --verbose
 ```
 
+
+#### Компиляция в ассемблер
+
+```bash
+
+# Базовая компиляция
+python -m lexer.cli --input examples/test_short.src --mode compile --output test_short.asm
+```
+
+```bash
+
+# Компиляция большого примера
+python -m lexer.cli --input examples/test_complete.src --mode compile --output test_complete.asm
+```
+
+#### Проверка
+
+```bash
+
+# Ассемблирование
+nasm -f elf64 -o test_short.o test_short.asm
+
+# Ассемблирование runtime
+nasm -f elf64 -o runtime.o runtime/runtime.asm
+
+# Линковка
+ld -o test_short runtime.o test_short.o
+
+# Запуск
+./test_short
+
+# Проверка результата
+echo $?
+# Ожидаемый вывод: 52 (42 + 10)
+```
+
 ---
 
 ## Пример вывода AST
@@ -213,6 +249,10 @@ pytest tests/ -v
 ```bash
 
 python tests/test_runner.py -v
+```
+```bash
+
+tests/codegen/run_tests.sh
 ```
 
 ### Тестирование файла со всеми токенами
@@ -351,3 +391,64 @@ cli.py — интерфейс командной строки
 5) Операторы и разделители
 
 6) Обработку пробелов и комментариев
+
+---
+
+---
+
+## Спринт 5: x86-64 Кодогенерация
+
+### Архитектура
+
+Генератор кода преобразует промежуточное представление (IR) в ассемблер NASM для x86-64 Linux,
+следуя соглашениям System V AMD64 ABI.
+
+Исходный код (.src) → Лексер → Парсер → Семантика → IR → x86-64 Ассемблер → NASM → .o → ld → программа
+
+
+### System V AMD64 ABI
+
+**Передача параметров:**
+- Целочисленные/указатели: RDI, RSI, RDX, RCX, R8, R9
+- Float/double: XMM0-XMM7
+- Остальные аргументы: на стеке (справа-налево)
+- Возврат int: RAX
+- Возврат float: XMM0
+
+**Стек-фрейм:**
+
+```
+Высокие адреса
++------------------+
+| Аргументы (>6) | [rbp+32+]
++------------------+
+| Return Address | [rbp+8]
++------------------+
+| Saved RBP | [rbp] ← RBP
++------------------+
+| Локальная 1 | [rbp-4]
++------------------+
+| Локальная 2 | [rbp-8]
++------------------+
+| Временная 1 | [rbp-12]
++------------------+
+| ... |
++------------------+
+Низкие адреса
+```
+
+### Структура тестов кодогенерации
+
+```
+tests/codegen/
+├── valid/
+│   ├── arithmetic_ops/       # +, -, *, /, %
+│   ├── control_flow/         # if/else, while, for
+│   ├── function_calls/       # вызовы функций, рекурсия
+│   ├── io_operations/        # print_int, read_int
+│   └── integration/          # комплексные тесты
+├── invalid/
+│   ├── assembly_errors/      # ошибки компиляции/ассемблирования
+│   └── runtime_errors/       # ошибки времени выполнения
+└── run_tests.sh              # скрипт автоматического тестирования
+```

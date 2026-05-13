@@ -13,7 +13,6 @@ from semantic.decorated_ast import (
     DecoratedCallExpr, DecoratedAssignmentExpr, DecoratedGroupingExpr
 )
 
-# Импорты из парсера для работы с оригинальным AST
 from parser.ast import (
     ProgramNode, FunctionDeclNode, VarDeclNode, StructDeclNode,
     BlockStmtNode, IfStmtNode, WhileStmtNode, ForStmtNode,
@@ -38,82 +37,69 @@ class IRGenerator:
 
     def __init__(self, symbol_table: SymbolTable):
         self.symbol_table = symbol_table
-        self.analyzer = None  # Будет установлен извне
+        self.analyzer = None
         self.program = IRProgram()
         self.current_function: Optional[IRFunction] = None
         self.current_block: Optional[BasicBlock] = None
-
-        # Для построения CFG
         self.break_stack: List[BasicBlock] = []
         self.continue_stack: List[BasicBlock] = []
-
-        # Контекст для выражений
         self.last_value: Optional[IROperand] = None
-        self.current_node = None  # Для комментариев
-
-        self.label_counter = 0  # Добавляем счётчик меток
+        self.current_node = None
+        self.label_counter = 0
 
     def generate(self, ast: DecoratedProgram) -> IRProgram:
-        """Генерирует IR для всей программы (заглушка)."""
         return self.program
 
     def generate_from_ast(self, ast: ProgramNode) -> IRProgram:
-        """Генерирует IR для всей программы из оригинального AST."""
-        # Генерируем функции
         for decl in ast.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._generate_function_from_ast(decl)
             elif isinstance(decl, VarDeclNode):
                 self._generate_global_var_from_ast(decl)
-
         return self.program
 
     def _generate_global_var_from_ast(self, node: VarDeclNode):
-        """Генерирует глобальную переменную из AST узла."""
         var_info = self.symbol_table.lookup(node.name)
         var_type = var_info.type if var_info else None
         var_op = Global(node.name, var_type)
         self.program.global_vars[node.name] = var_op
 
     def _generate_function_from_ast(self, node: FunctionDeclNode):
-        """Генерирует IR для функции из AST узла."""
         self.current_node = node
-
-        # Получаем информацию о функции из таблицы символов
         func_info = self.symbol_table.lookup(node.name)
         return_type = func_info.return_type_node if func_info else None
 
         func = IRFunction(node.name, return_type)
 
-        # Параметры
-        for param in node.parameters:
+        entry_block = func.create_block("entry")
+        func.set_entry(entry_block)
+        self.current_block = entry_block
+
+        for i, param in enumerate(node.parameters):
             param_info = self.symbol_table.lookup(param.name)
-            # Получаем тип параметра из объявления
             if param.type_name == 'int':
                 param_type = Type('int', size_bytes=4, alignment=4)
             elif param.type_name == 'float':
-                param_type = Type('float', size_bytes=8, alignment=8)
+                param_type = Type('float', size_bytes=4, alignment=4)
             elif param.type_name == 'bool':
                 param_type = Type('bool', size_bytes=1, alignment=1)
             else:
                 param_type = param_info.type if param_info else Type('int')
 
-            param_op = Temp(param.name, param_type)
-            func.parameters.append(param_op)
-            func.var_to_temp[param.name] = param_op
+            param_var = Var(param.name, param_type)
+            func.parameters.append(param_var)
+            func.local_vars[param.name] = param_type
+
+            param_temp = func.new_temp(f"param_{param.name}", param_type)
+            func.var_to_temp[param.name] = param_temp
+
+            self._emit(IRInstruction(IROpcode.MOVE, [param_temp, param_var]), node)
 
         self.current_function = func
         self.program.add_function(func)
 
-        # Создаем entry блок
-        entry_block = func.create_block("entry")
-        func.set_entry(entry_block)
-        self.current_block = entry_block
-
-        # Генерируем тело функции
         self._generate_block_from_ast(node.body)
 
-        # Убеждаемся, что функция завершается return
         if self.current_block and not self.current_block.is_terminated():
             if return_type and return_type.name == 'void':
                 self._emit_return(None, node)
@@ -125,12 +111,10 @@ class IRGenerator:
         self.current_node = None
 
     def _generate_block_from_ast(self, node: BlockStmtNode):
-        """Генерирует IR для блока операторов из AST узла."""
         for stmt in node.statements:
             self._generate_statement_from_ast(stmt)
 
     def _generate_statement_from_ast(self, stmt):
-        """Генерирует IR для оператора из AST узла."""
         self.current_node = stmt
 
         if isinstance(stmt, VarDeclNode):
@@ -151,45 +135,38 @@ class IRGenerator:
             pass
 
     def _generate_var_decl_from_ast(self, node: VarDeclNode):
-        """Генерирует IR для объявления переменной из AST узла."""
         var_info = self.symbol_table.lookup(node.name)
         var_type = var_info.type if var_info else None
 
-        # Если тип не найден, определяем по имени типа
         if not var_type:
             if node.type_name == 'int':
                 var_type = Type('int', size_bytes=4, alignment=4)
             elif node.type_name == 'float':
-                var_type = Type('float', size_bytes=8, alignment=8)
+                var_type = Type('float', size_bytes=4, alignment=4)
             elif node.type_name == 'bool':
                 var_type = Type('bool', size_bytes=1, alignment=1)
 
-        # Выделяем память на стеке
-        var_addr = self.current_function.new_temp(f"{node.name}_addr", var_type)
-        size = self._get_type_size(var_type)
-        self._emit_alloca(var_addr, size, node)
-
-        # Сохраняем соответствие
-        self.current_function.var_to_temp[node.name] = var_addr
         self.current_function.local_vars[node.name] = var_type
 
-        # Инициализация
+        var_temp = self.current_function.new_temp(f"var_{node.name}", var_type)
+        self.current_function.var_to_temp[node.name] = var_temp
+
         if node.initializer:
             self._generate_expression_from_ast(node.initializer)
-            val = self.last_value
-            self._emit_store(var_addr, val, node)
+            init_val = self.last_value
+            self._emit(IRInstruction(IROpcode.MOVE, [var_temp, init_val]), node)
+        else:
+            zero = Lit(0, var_type)
+            self._emit(IRInstruction(IROpcode.MOVE, [var_temp, zero]), node)
 
     def _new_label(self, base: str) -> str:
-        """Создаёт уникальную метку."""
         self.label_counter += 1
         return f"{base}_{self.label_counter}"
 
     def _generate_if_from_ast(self, node: IfStmtNode):
-        """Генерирует IR для if из AST узла."""
         self._generate_expression_from_ast(node.condition)
         cond_val = self.last_value
 
-        # Уникальные метки
         then_label = self._new_label("if_then")
         else_label = self._new_label("if_else") if node.else_branch else None
         endif_label = self._new_label("if_endif")
@@ -198,7 +175,6 @@ class IRGenerator:
         else_block = self.current_function.create_block(else_label) if else_label else None
         endif_block = self.current_function.create_block(endif_label)
 
-        # Проверяем, является ли условие отрицанием
         is_negated = self._is_negated_condition(node.condition)
 
         if else_block:
@@ -216,13 +192,11 @@ class IRGenerator:
                 self._emit_jump_if(cond_val, then_block.label, node)
                 self._emit_jump(endif_block.label, node)
 
-        # Then блок
         self.current_block = then_block
         self._generate_statement_from_ast(node.then_branch)
         if not self.current_block.is_terminated():
             self._emit_jump(endif_block.label, node)
 
-        # Else блок
         if else_block:
             self.current_block = else_block
             self._generate_statement_from_ast(node.else_branch)
@@ -232,13 +206,11 @@ class IRGenerator:
         self.current_block = endif_block
 
     def _is_negated_condition(self, expr) -> bool:
-        """Проверяет, является ли выражение отрицанием (!expr)."""
         if isinstance(expr, UnaryExprNode):
             return expr.operator == '!'
         return False
 
     def _generate_while_from_ast(self, node: WhileStmtNode):
-        """Генерирует IR для while из AST узла."""
         header_label = self._new_label("while_header")
         body_label = self._new_label("while_body")
         exit_label = self._new_label("while_exit")
@@ -252,7 +224,6 @@ class IRGenerator:
 
         self._emit_jump(header_block.label, node)
 
-        # Заголовок: условие
         self.current_block = header_block
         self._generate_expression_from_ast(node.condition)
         cond_val = self.last_value
@@ -264,23 +235,19 @@ class IRGenerator:
             self._emit_jump_if(cond_val, body_block.label, node)
             self._emit_jump(exit_block.label, node)
 
-        # Тело цикла
         self.current_block = body_block
         self._generate_statement_from_ast(node.body)
         if not self.current_block.is_terminated():
             self._emit_jump(header_block.label, node)
 
-        # Выход
         self.current_block = exit_block
         self.break_stack.pop()
         self.continue_stack.pop()
 
     def _generate_for_from_ast(self, node: ForStmtNode):
-        """Генерирует IR для for из AST узла."""
         if node.init:
             self._generate_statement_from_ast(node.init)
 
-        # Уникальные метки
         header_label = self._new_label("for_header")
         body_label = self._new_label("for_body")
         update_label = self._new_label("for_update")
@@ -296,7 +263,6 @@ class IRGenerator:
 
         self._emit_jump(header_block.label, node)
 
-        # Заголовок: условие
         self.current_block = header_block
         if node.condition:
             self._generate_expression_from_ast(node.condition)
@@ -310,25 +276,21 @@ class IRGenerator:
         else:
             self._emit_jump(body_block.label, node)
 
-        # Тело цикла
         self.current_block = body_block
         self._generate_statement_from_ast(node.body)
         if not self.current_block.is_terminated():
-            self._emit_jump(update_block.label, node)  # Переход к обновлению
+            self._emit_jump(update_block.label, node)
 
-        # Обновление
         self.current_block = update_block
         if node.update:
             self._generate_expression_from_ast(node.update)
-        self._emit_jump(header_block.label, node)  # Переход к заголовку
+        self._emit_jump(header_block.label, node)
 
-        # Выход
         self.current_block = exit_block
         self.break_stack.pop()
         self.continue_stack.pop()
 
     def _generate_return_from_ast(self, node: ReturnStmtNode):
-        """Генерирует IR для return из AST узла."""
         if node.value:
             self._generate_expression_from_ast(node.value)
             self._emit_return(self.last_value, node)
@@ -336,11 +298,9 @@ class IRGenerator:
             self._emit_return(None, node)
 
     def _generate_expr_stmt_from_ast(self, node: ExprStmtNode):
-        """Генерирует IR для оператора-выражения из AST узла."""
         self._generate_expression_from_ast(node.expression)
 
     def _generate_expression_from_ast(self, expr):
-        """Генерирует IR для выражения из AST узла."""
         self.current_node = expr
 
         if isinstance(expr, LiteralExprNode):
@@ -348,26 +308,21 @@ class IRGenerator:
             self.last_value = Lit(expr.value, expr_type)
 
         elif isinstance(expr, IdentifierExprNode):
-            # Проверяем, является ли это параметром функции
-            is_param = False
-            for param in self.current_function.parameters:
-                if param.value == expr.name:
-                    self.last_value = param
-                    is_param = True
-                    break
+            var_temp = self.current_function.var_to_temp.get(expr.name)
+            if var_temp:
+                self.last_value = var_temp
+            else:
+                found = False
+                for param in self.current_function.parameters:
+                    if param.value == expr.name:
+                        self.last_value = param
+                        found = True
+                        break
 
-            if not is_param:
-                var_addr = self.current_function.var_to_temp.get(expr.name)
-                if var_addr:
-                    expr_type = self._get_type_from_symbol_table(expr)
-                    result = self.current_function.new_temp("load", expr_type)
-                    self._emit_load(result, var_addr, expr)
-                    self.last_value = result
-                else:
-                    # Глобальная переменная
+                if not found:
                     expr_type = self._get_type_from_symbol_table(expr)
                     global_var = Global(expr.name, expr_type)
-                    result = self.current_function.new_temp("load", expr_type)
+                    result = self.current_function.new_temp("load_global", expr_type)
                     self._emit_load(result, global_var, expr)
                     self.last_value = result
 
@@ -406,7 +361,6 @@ class IRGenerator:
         return self.last_value
 
     def _generate_call_from_ast(self, expr: CallExprNode):
-        """Генерирует IR для вызова функции из AST узла."""
         args = []
         for arg in expr.arguments:
             self._generate_expression_from_ast(arg)
@@ -423,48 +377,37 @@ class IRGenerator:
         self.last_value = result
 
     def _generate_assignment_from_ast(self, expr: AssignmentExprNode):
-        """Генерирует IR для присваивания из AST узла."""
-
-        # Если это составное присваивание (+=, -=, *=, /=, %=)
         if expr.operator in ('+=', '-=', '*=', '/=', '%='):
-            # Загружаем текущее значение переменной
             if isinstance(expr.target, IdentifierExprNode):
-                var_addr = self.current_function.var_to_temp.get(expr.target.name)
-                if var_addr:
-                    # Загружаем старое значение
-                    old_val = self.current_function.new_temp("load", self._get_type_from_symbol_table(expr.target))
-                    self._emit_load(old_val, var_addr, expr)
-
-                    # Вычисляем новое значение
+                var_temp = self.current_function.var_to_temp.get(expr.target.name)
+                if var_temp:
+                    old_val = var_temp
                     self._generate_expression_from_ast(expr.value)
                     right_val = self.last_value
-
-                    # Выполняем операцию
                     result = self.current_function.new_temp("binop", self._get_type_from_symbol_table(expr))
-                    op = expr.operator[0]  # '+=' -> '+', '-=' -> '-', и т.д.
+                    op = expr.operator[0]
                     self._emit_binary(result, op, old_val, right_val, self._get_type_from_symbol_table(expr), expr)
-
-                    # Сохраняем результат
-                    self._emit_store(var_addr, result, expr)
-                    self.last_value = result
+                    self._emit(IRInstruction(IROpcode.MOVE, [var_temp, result]), expr)
+                    self.last_value = var_temp
                     return
         else:
-            # Обычное присваивание (=)
             self._generate_expression_from_ast(expr.value)
             val = self.last_value
 
             if isinstance(expr.target, IdentifierExprNode):
-                var_addr = self.current_function.var_to_temp.get(expr.target.name)
-                if var_addr:
-                    self._emit_store(var_addr, val, expr)
+                var_temp = self.current_function.var_to_temp.get(expr.target.name)
+                if var_temp:
+                    self._emit(IRInstruction(IROpcode.MOVE, [var_temp, val]), expr)
+                    self.last_value = var_temp
                 else:
                     found = False
                     for param in self.current_function.parameters:
                         if param.value == expr.target.name:
                             expr_type = self._get_type_from_symbol_table(expr.target)
-                            param_copy = self.current_function.new_temp(f"{expr.target.name}_copy", expr_type)
-                            self._emit_store(param_copy, val, expr)
-                            self.current_function.var_to_temp[expr.target.name] = param_copy
+                            param_temp = self.current_function.new_temp(f"param_{expr.target.name}", expr_type)
+                            self._emit(IRInstruction(IROpcode.MOVE, [param_temp, val]), expr)
+                            self.current_function.var_to_temp[expr.target.name] = param_temp
+                            self.last_value = param_temp
                             found = True
                             break
 
@@ -472,11 +415,9 @@ class IRGenerator:
                         expr_type = self._get_type_from_symbol_table(expr.target)
                         global_var = Global(expr.target.name, expr_type)
                         self._emit_store(global_var, val, expr)
-
-            self.last_value = val
+                        self.last_value = val
 
     def _get_type_from_symbol_table(self, expr) -> Optional[Type]:
-        """Получает тип выражения из таблицы символов."""
         if isinstance(expr, IdentifierExprNode):
             info = self.symbol_table.lookup(expr.name)
             if info:
@@ -487,7 +428,7 @@ class IRGenerator:
             elif isinstance(expr.value, int):
                 return Type('int', size_bytes=4, alignment=4)
             elif isinstance(expr.value, float):
-                return Type('float', size_bytes=8, alignment=8)
+                return Type('float', size_bytes=4, alignment=4)
             elif isinstance(expr.value, str):
                 return Type('string', size_bytes=8, alignment=8)
         return Type('int', size_bytes=4, alignment=4)
@@ -495,7 +436,6 @@ class IRGenerator:
     # ============= Методы эмиссии инструкций =============
 
     def _emit(self, instr: IRInstruction, node=None):
-        """Добавляет инструкцию в текущий блок."""
         if node and hasattr(node, 'line'):
             instr.comment = f"line {node.line}"
         if self.current_block:
@@ -558,12 +498,11 @@ class IRGenerator:
         self._emit(IRInstruction(IROpcode.RETURN, ops), node)
 
     def _get_type_size(self, ir_type: Type) -> int:
-        """Возвращает размер типа в байтах."""
         if ir_type:
             if ir_type.name == 'int':
                 return 4
             elif ir_type.name == 'float':
-                return 8
+                return 4
             elif ir_type.name == 'bool':
                 return 1
             elif ir_type.name == 'void':

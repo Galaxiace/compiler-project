@@ -1,0 +1,6 @@
+// Тест: деление на ноль
+fn main() -> int {
+    int x = 5;
+    int y = 0;
+    return x / y;
+}

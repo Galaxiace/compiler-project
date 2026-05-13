@@ -1,0 +1,8 @@
+// Тест: бесконечная рекурсия (переполнение стека)
+fn infinite(int n) -> int {
+    return infinite(n + 1);
+}
+
+fn main() -> int {
+    return infinite(0);
+}

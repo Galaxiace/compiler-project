@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Обновленный CLI с поддержкой семантического анализа и IR генерации.
+Обновленный CLI с поддержкой семантического анализа, IR и x86-64 кодогенерации.
 """
 
 import argparse
@@ -32,6 +32,9 @@ from ir.ir_generator import IRGenerator
 from ir.ir_writer import IRWriter
 from ir.dot_generator import IRDotGenerator
 from ir.control_flow import IRProgram
+
+# Импорты кодогенератора
+from codegen.x86_generator import X86Generator
 
 
 def read_source_file(file_path: str) -> str:
@@ -133,48 +136,32 @@ def run_semantic(ast: ProgramNode, output_file: Optional[str] = None,
                  verbose: bool = False, show_types: bool = False):
     """
     Запускает семантический анализ на AST.
-
-    Args:
-        ast: Корневой узел AST
-        output_file: Файл для вывода
-        verbose: Подробный вывод
-        show_types: Показывать аннотации типов
-
-    Returns:
-        tuple: (success: bool, analyzer: SemanticAnalyzer, decorated_ast)
     """
     analyzer = SemanticAnalyzer()
     decorated_ast = analyzer.analyze(ast)
 
     errors = analyzer.get_errors()
 
-    # Выводим ошибки
     if errors:
         print("Найдены семантические ошибки:", file=sys.stderr)
         for error in errors:
             print(f"  {error}", file=sys.stderr)
 
-    # Формируем вывод
     output_lines = []
-
-    # Таблица символов
     output_lines.append("=" * 60)
     output_lines.append("SYMBOL TABLE")
     output_lines.append("=" * 60)
     output_lines.append(analyzer.get_symbol_table().dump())
     output_lines.append("")
 
-    # Декорированный AST с типами
     if show_types:
         output_lines.append("=" * 60)
         output_lines.append("DECORATED AST (with type annotations)")
         output_lines.append("=" * 60)
-
         printer = DecoratedASTPrinter()
         output_lines.append(printer.print(decorated_ast))
         output_lines.append("")
 
-    # Отчет об ошибках
     output_lines.append("=" * 60)
     output_lines.append("VALIDATION REPORT")
     output_lines.append("=" * 60)
@@ -206,8 +193,8 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
            validate: bool = False):
     """
     Запускает IR генерацию на AST.
+    Возвращает кортеж (success: bool, ir_program: IRProgram | None).
     """
-    # Сначала выполняем семантический анализ
     analyzer = SemanticAnalyzer()
     decorated_ast = analyzer.analyze(ast)
 
@@ -216,30 +203,25 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
         print("Найдены семантические ошибки:", file=sys.stderr)
         for error in errors:
             print(f"  {error}", file=sys.stderr)
-        return False
+        return False, None
 
-    # Генерируем IR
     generator = IRGenerator(analyzer.get_symbol_table())
     generator.analyzer = analyzer
     ir_program = generator.generate_from_ast(ast)
 
-    # Валидация IR
     if validate:
         from ir.validator import IRValidator
         validator = IRValidator()
         ir_errors, ir_warnings = validator.validate(ir_program)
-
         if ir_errors:
             print("Найдены ошибки в IR:", file=sys.stderr)
             for error in ir_errors:
                 print(f"  ERROR: {error}", file=sys.stderr)
-
         if ir_warnings:
             print("Предупреждения IR:", file=sys.stderr)
             for warning in ir_warnings:
                 print(f"  WARNING: {warning}", file=sys.stderr)
 
-    # Применяем оптимизации если нужно
     if optimize:
         try:
             from ir.peephole_optimizer import PeepholeOptimizer
@@ -251,7 +233,6 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
             if verbose:
                 print("Оптимизатор не реализован (stretch goal)", file=sys.stderr)
 
-    # Форматируем вывод
     if format_type == "dot":
         dot_gen = IRDotGenerator()
         output_parts = []
@@ -264,16 +245,14 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
         from ir.json_generator import IRJsonGenerator
         json_gen = IRJsonGenerator()
         output = json_gen.generate(ir_program)
-    else:  # text
+    else:
         writer = IRWriter()
         output = writer.write_program(ir_program)
 
-    # Добавляем статистику если нужно
     if show_stats:
         stats = generate_ir_stats(ir_program)
         output = stats + "\n" + output
 
-    # Добавляем verbose информацию
     if verbose:
         header = [
             "#" + "=" * 60,
@@ -295,10 +274,37 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
     else:
         print(output)
 
-    return True
+    return True, ir_program
 
 
-# В функции generate_ir_stats добавить:
+def run_compile(ast: ProgramNode, output_file: Optional[str] = None, target: str = "x86_64"):
+    """
+    Запускает полную компиляцию исходного кода в ассемблер.
+    """
+    # 1. Генерация IR
+    ir_success, ir_program = run_ir(ast, output_file=None, format_type="text", verbose=False)
+    if not ir_success:
+        sys.exit(1)
+
+    # 2. Генерация ассемблера
+    if target == "x86_64":
+        generator = X86Generator(ir_program)
+        asm_code = generator.generate()
+
+        if output_file:
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(asm_code)
+                print(f"Ассемблерный код сохранен в {output_file}", file=sys.stderr)
+            except Exception as e:
+                print(f"Ошибка записи в файл {output_file}: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print(asm_code)
+    else:
+        print(f"Ошибка: Неподдерживаемая целевая платформа '{target}'", file=sys.stderr)
+        sys.exit(1)
+
 
 def generate_ir_stats(ir_program: IRProgram) -> str:
     """Генерирует статистику по IR программе."""
@@ -317,7 +323,6 @@ def generate_ir_stats(ir_program: IRProgram) -> str:
         total_blocks += len(func.blocks)
         total_temporaries += func.temp_counter
 
-        # Считаем максимальную глубину стека (количество ALLOCA)
         func_stack_depth = 0
         for block in func.blocks:
             for instr in block.instructions:
@@ -350,7 +355,6 @@ def generate_ir_stats(ir_program: IRProgram) -> str:
 def count_nodes(node) -> int:
     """Подсчитывает количество узлов в AST."""
     count = 1
-
     if hasattr(node, 'declarations'):
         for decl in node.declarations:
             count += count_nodes(decl)
@@ -394,7 +398,6 @@ def count_nodes(node) -> int:
             count += count_nodes(arg)
     if hasattr(node, 'target'):
         count += count_nodes(node.target)
-
     return count
 
 
@@ -402,11 +405,9 @@ def count_declarations(node) -> int:
     """Подсчитывает количество объявлений в AST."""
     if not hasattr(node, 'node_type'):
         return 0
-
     count = 0
     if node.node_type.name in ['FUNCTION_DECL', 'STRUCT_DECL', 'VAR_DECL']:
         count += 1
-
     if hasattr(node, 'declarations'):
         for decl in node.declarations:
             count += count_declarations(decl)
@@ -419,53 +420,33 @@ def count_declarations(node) -> int:
         count += count_declarations(node.then_branch)
     if hasattr(node, 'else_branch') and node.else_branch:
         count += count_declarations(node.else_branch)
-
     return count
 
 
 def main():
     """Главная функция CLI"""
     parser = argparse.ArgumentParser(
-        description='MiniCompiler - Лексический анализатор, парсер, семантический анализатор и IR генератор',
+        description='MiniCompiler - Лексический анализатор, парсер, семантический анализатор, IR и ассемблерный генератор',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Примеры использования:
-  # Только лексический анализ
-  compiler --input program.src --mode lex
+  # Генерация x86-64 ассемблера
+  compiler --input program.src --mode compile --target x86_64 --output program.asm
 
-  # Парсинг с выводом AST в текстовом формате
-  compiler --input program.src --mode parse --ast-format text
-
-  # Семантический анализ
-  compiler --input program.src --mode semantic
-
-  # Семантический анализ с показом типов
-  compiler --input program.src --mode semantic --show-types
-
-  # Генерация IR
-  compiler --input program.src --mode ir
-
-  # Генерация IR с выводом в файл
-  compiler --input program.src --mode ir --output program.ir
-
-  # Генерация CFG в формате DOT
-  compiler --input program.src --mode ir --ir-format dot --output cfg.dot
-
-  # Генерация IR со статистикой
-  compiler --input program.src --mode ir --stats
-
-  # Генерация IR с оптимизацией
-  compiler --input program.src --mode ir --optimize --stats
-
-  # Полный pipeline с подробным выводом
-  compiler --input program.src --mode ir --verbose
+  # Компиляция и сборка
+  nasm -f elf64 -o program.o program.asm
+  nasm -f elf64 -o runtime.o src/runtime/runtime.asm
+  ld -o program runtime.o program.o
+  ./program
         """
     )
 
     parser.add_argument('--input', '-i', required=True, help='Входной файл с исходным кодом')
     parser.add_argument('--output', '-o', help='Выходной файл (по умолчанию stdout)')
-    parser.add_argument('--mode', '-m', choices=['lex', 'parse', 'semantic', 'ir'], default='lex',
-                        help='Режим работы: lex - лексер, parse - парсер, semantic - семантика, ir - IR генерация')
+    parser.add_argument('--mode', '-m', choices=['lex', 'parse', 'semantic', 'ir', 'compile'], default='lex',
+                        help='Режим работы: lex, parse, semantic, ir, compile')
+    parser.add_argument('--target', choices=['x86_64'], default='x86_64',
+                        help='Целевая архитектура (для режима compile)')
     parser.add_argument('--ast-format', choices=['text', 'dot', 'json'], default='text',
                         help='Формат вывода AST для режима parse (по умолчанию text)')
     parser.add_argument('--ir-format', choices=['text', 'dot', 'json'], default='text',
@@ -482,7 +463,6 @@ def main():
                         help='Выводить статистику IR')
 
     args = parser.parse_args()
-
     source = read_source_file(args.input)
 
     if args.mode == 'lex':
@@ -491,71 +471,65 @@ def main():
     elif args.mode == 'parse':
         scanner = Scanner(source)
         tokens = scanner.scan_tokens()
-
         if scanner.errors:
             print("Найдены лексические ошибки:", file=sys.stderr)
             for error in scanner.errors:
                 print(f"  {error}", file=sys.stderr)
             sys.exit(1)
-
         run_parser(tokens, args.ast_format, args.output, args.verbose)
 
     elif args.mode == 'semantic':
-        # Лексический анализ
         scanner = Scanner(source)
         tokens = scanner.scan_tokens()
-
         if scanner.errors:
             print("Найдены лексические ошибки:", file=sys.stderr)
             for error in scanner.errors:
                 print(f"  {error}", file=sys.stderr)
             sys.exit(1)
-
-        # Синтаксический анализ
         parser_obj = Parser(tokens)
         ast = parser_obj.parse()
-
         if parser_obj.errors:
             print("Найдены синтаксические ошибки:", file=sys.stderr)
             for error in parser_obj.errors:
                 print(f"  {error}", file=sys.stderr)
             sys.exit(1)
-
-        # Семантический анализ
         success, _, _ = run_semantic(ast, args.output, args.verbose, args.show_types)
         sys.exit(0 if success else 1)
 
     elif args.mode == 'ir':
-        # Лексический анализ
         scanner = Scanner(source)
         tokens = scanner.scan_tokens()
-
         if scanner.errors:
             print("Найдены лексические ошибки:", file=sys.stderr)
             for error in scanner.errors:
                 print(f"  {error}", file=sys.stderr)
             sys.exit(1)
-
-        # Синтаксический анализ
         parser_obj = Parser(tokens)
         ast = parser_obj.parse()
-
         if parser_obj.errors:
             print("Найдены синтаксические ошибки:", file=sys.stderr)
             for error in parser_obj.errors:
                 print(f"  {error}", file=sys.stderr)
             sys.exit(1)
-
-        # IR генерация
-        success = run_ir(
-            ast,
-            args.output,
-            args.ir_format,
-            args.verbose,
-            args.optimize,
-            args.stats
-        )
+        success, _ = run_ir(ast, args.output, args.ir_format, args.verbose, args.optimize, args.stats, args.validate)
         sys.exit(0 if success else 1)
+
+    elif args.mode == 'compile':
+        scanner = Scanner(source)
+        tokens = scanner.scan_tokens()
+        if scanner.errors:
+            print("Найдены лексические ошибки:", file=sys.stderr)
+            for error in scanner.errors:
+                print(f"  {error}", file=sys.stderr)
+            sys.exit(1)
+        parser_obj = Parser(tokens)
+        ast = parser_obj.parse()
+        if parser_obj.errors:
+            print("Найдены синтаксические ошибки:", file=sys.stderr)
+            for error in parser_obj.errors:
+                print(f"  {error}", file=sys.stderr)
+            sys.exit(1)
+        run_compile(ast, args.output, args.target)
 
 
 if __name__ == '__main__':

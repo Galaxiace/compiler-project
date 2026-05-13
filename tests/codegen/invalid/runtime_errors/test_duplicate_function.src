@@ -1,0 +1,12 @@
+// Тест: дублирующаяся функция
+fn test() -> int {
+    return 1;
+}
+
+fn test() -> int {
+    return 2;
+}
+
+fn main() -> int {
+    return test();
+}

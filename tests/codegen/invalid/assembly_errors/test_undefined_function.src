@@ -1,0 +1,4 @@
+// Тест: вызов несуществующей функции
+fn main() -> int {
+    return unknown_function(5);
+}

@@ -1,0 +1,5 @@
+// Тест: несоответствие типов
+fn main() -> int {
+    int x = "hello";
+    return x;
+}

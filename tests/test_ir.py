@@ -81,10 +81,11 @@ def test_variable_declaration():
     }
     """
     ir, _ = generate_ir(source)
-    assert "ALLOCA" in ir
-    assert "STORE" in ir
-    assert "LOAD" in ir
+    # Проверяем что переменные создаются через MOVE, а не ALLOCA
+    assert "MOVE 5" in ir
+    assert "MOVE" in ir
     assert "ADD" in ir
+    assert "RETURN" in ir
 
 
 def test_if_statement():
