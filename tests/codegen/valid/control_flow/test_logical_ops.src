@@ -1,0 +1,29 @@
+// test_logical_ops.src
+// Тест логических операторов с правильными типами
+
+fn main() -> int {
+    bool a = true;
+    bool b = false;
+    bool c = true;
+
+    bool and_result = a && b;
+    bool or_result = a || b;
+    bool not_result = !b;
+    bool complex = (a && c) || (b && a);
+
+    int result = 0;
+    if (and_result) {
+        result = result + 1;
+    }
+    if (or_result) {
+        result = result + 1;
+    }
+    if (not_result) {
+        result = result + 1;
+    }
+    if (complex) {
+        result = result + 1;
+    }
+
+    return result;  // Ожидается: 3 (or_result, not_result, complex)
+}

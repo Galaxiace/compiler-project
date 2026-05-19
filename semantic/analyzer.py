@@ -5,7 +5,15 @@
 """
 
 from typing import List, Dict, Optional, Any, Union
-from parser.ast import *
+from parser.ast import (
+    ProgramNode, FunctionDeclNode, VarDeclNode, StructDeclNode, ArrayDeclNode,
+    BlockStmtNode, IfStmtNode, WhileStmtNode, ForStmtNode,
+    ReturnStmtNode, ExprStmtNode, EmptyStmtNode,
+    LiteralExprNode, IdentifierExprNode, BinaryExprNode,
+    UnaryExprNode, CallExprNode, AssignmentExprNode, GroupingExprNode,
+    CastExprNode, ArrayAccessExprNode, StructFieldAccessExprNode,
+    StatementNode, ExpressionNode, DeclarationNode  # Добавлены недостающие
+)
 from parser.visitor import Visitor
 from .symbol_table import SymbolTable, SymbolInfo, SymbolKind, Type, create_builtin_types
 from .type_system import TypeCompatibility
@@ -46,6 +54,8 @@ class SemanticAnalyzer(Visitor):
 
         return decorated
 
+    # ============= ПЕРВЫЙ ПРОХОД: РЕГИСТРАЦИЯ =============
+
     def _register_declarations(self, ast: ProgramNode):
         """Первый проход: регистрация всех объявлений."""
         for decl in ast.declarations:
@@ -54,6 +64,8 @@ class SemanticAnalyzer(Visitor):
             elif isinstance(decl, StructDeclNode):
                 self._register_struct(decl)
             elif isinstance(decl, VarDeclNode):
+                self._register_global_variable(decl)
+            elif isinstance(decl, ArrayDeclNode):
                 self._register_global_variable(decl)
 
     def _register_function(self, node: FunctionDeclNode):
@@ -133,35 +145,87 @@ class SemanticAnalyzer(Visitor):
 
         self.symbol_table.insert(node.name, info)
 
-    def _register_global_variable(self, node: VarDeclNode):
-        """Регистрирует глобальную переменную."""
-        var_type = self._get_type_from_name(node.type_name)
-        if not var_type:
-            var_type = self._lookup_struct_type(node.type_name)
+    def _register_global_variable(self, node: Union[VarDeclNode, ArrayDeclNode]):
+        """Регистрирует глобальную переменную или массив."""
+        if isinstance(node, ArrayDeclNode):
+            # Регистрация массива
+            element_type = self._get_type_from_name(node.type_name)
+            if not element_type:
+                element_type = self._lookup_struct_type(node.type_name)
 
-        if not var_type:
-            self.errors.append(SemanticError(
-                f"unknown type '{node.type_name}'", node.line, node.column
-            ))
-            return
+            if not element_type:
+                self.errors.append(SemanticError(
+                    f"unknown type '{node.type_name}'", node.line, node.column
+                ))
+                return
 
-        existing = self.symbol_table.lookup(node.name)
-        if existing:
-            self.errors.append(DuplicateDeclarationError(
-                node.name, "variable", node.line, node.column, existing.line
-            ))
-            return
+            # Вычисляем размер массива
+            array_size = None
+            if node.size and isinstance(node.size, LiteralExprNode):
+                array_size = node.size.value
+            elif node.size:
+                self.errors.append(SemanticError(
+                    f"array size must be a constant integer", node.size.line, node.size.column
+                ))
+                return
 
-        info = SymbolInfo(
-            name=node.name,
-            kind=SymbolKind.VARIABLE,
-            type=var_type,
-            line=node.line,
-            column=node.column,
-            is_initialized=node.initializer is not None
-        )
+            array_type = Type(
+                name=f"array_{node.type_name}",
+                is_array=True,
+                array_size=array_size,
+                element_type=element_type,
+                size_bytes=element_type.size_bytes * (array_size or 0),
+                alignment=element_type.alignment
+            )
 
-        self.symbol_table.insert(node.name, info)
+            existing = self.symbol_table.lookup(node.name)
+            if existing:
+                self.errors.append(DuplicateDeclarationError(
+                    node.name, "array", node.line, node.column, existing.line
+                ))
+                return
+
+            info = SymbolInfo(
+                name=node.name,
+                kind=SymbolKind.VARIABLE,
+                type=array_type,
+                line=node.line,
+                column=node.column,
+                is_initialized=node.initializer is not None
+            )
+            self.symbol_table.insert(node.name, info)
+
+        else:
+            # Обычная переменная
+            var_type = self._get_type_from_name(node.type_name)
+            if not var_type:
+                var_type = self._lookup_struct_type(node.type_name)
+
+            if not var_type:
+                self.errors.append(SemanticError(
+                    f"unknown type '{node.type_name}'", node.line, node.column
+                ))
+                return
+
+            existing = self.symbol_table.lookup(node.name)
+            if existing:
+                self.errors.append(DuplicateDeclarationError(
+                    node.name, "variable", node.line, node.column, existing.line
+                ))
+                return
+
+            info = SymbolInfo(
+                name=node.name,
+                kind=SymbolKind.VARIABLE,
+                type=var_type,
+                line=node.line,
+                column=node.column,
+                is_initialized=node.initializer is not None
+            )
+
+            self.symbol_table.insert(node.name, info)
+
+    # ============= ВТОРОЙ ПРОХОД: АНАЛИЗ =============
 
     def _analyze_declarations(self, ast: ProgramNode):
         """Второй проход: анализ тел функций и выражений."""
@@ -173,6 +237,10 @@ class SemanticAnalyzer(Visitor):
             elif isinstance(decl, VarDeclNode):
                 if decl.initializer:
                     self._analyze_expression(decl.initializer)
+            elif isinstance(decl, ArrayDeclNode):
+                if decl.initializer:
+                    for init_expr in decl.initializer:
+                        self._analyze_expression(init_expr)
 
     def _analyze_function(self, node: FunctionDeclNode):
         """Анализирует тело функции."""
@@ -185,7 +253,6 @@ class SemanticAnalyzer(Visitor):
 
         self.current_function = func_info
 
-        # Регистрируем параметры (всегда инициализированы)
         for param in node.parameters:
             param_type = self._get_type_from_name(param.type_name)
             if not param_type:
@@ -202,10 +269,8 @@ class SemanticAnalyzer(Visitor):
                 )
                 self.symbol_table.insert(param.name, param_info)
 
-        # Анализируем тело
         self._analyze_block(node.body)
 
-        # Проверяем, что все пути возвращают значение
         if func_info.return_type_node and func_info.return_type_node.name != 'void':
             has_return = self._check_has_return(node.body)
             if not has_return:
@@ -229,6 +294,8 @@ class SemanticAnalyzer(Visitor):
         """Анализирует оператор."""
         if isinstance(node, VarDeclNode):
             self._analyze_var_decl(node)
+        elif isinstance(node, ArrayDeclNode):
+            self._analyze_var_decl(node)
         elif isinstance(node, IfStmtNode):
             self._analyze_if(node)
         elif isinstance(node, WhileStmtNode):
@@ -242,8 +309,8 @@ class SemanticAnalyzer(Visitor):
         elif isinstance(node, BlockStmtNode):
             self._analyze_block(node)
 
-    def _analyze_var_decl(self, node: VarDeclNode):
-        """Анализирует объявление переменной."""
+    def _analyze_var_decl(self, node: Union[VarDeclNode, ArrayDeclNode]):
+        """Анализирует объявление переменной или массива."""
         existing = self.symbol_table.lookup_local(node.name)
         if existing:
             self.errors.append(DuplicateDeclarationError(
@@ -251,9 +318,33 @@ class SemanticAnalyzer(Visitor):
             ))
             return
 
-        var_type = self._get_type_from_name(node.type_name)
-        if not var_type:
-            var_type = self._lookup_struct_type(node.type_name)
+        if isinstance(node, ArrayDeclNode):
+            # Массив
+            element_type = self._get_type_from_name(node.type_name)
+            if not element_type:
+                element_type = self._lookup_struct_type(node.type_name)
+
+            if not element_type:
+                self.errors.append(SemanticError(
+                    f"unknown type '{node.type_name}'", node.line, node.column
+                ))
+                return
+
+            array_size = None
+            if node.size and isinstance(node.size, LiteralExprNode):
+                array_size = node.size.value
+
+            var_type = Type(
+                name=f"array_{node.type_name}",
+                is_array=True,
+                array_size=array_size,
+                element_type=element_type,
+                size_bytes=element_type.size_bytes * (array_size or 0)
+            )
+        else:
+            var_type = self._get_type_from_name(node.type_name)
+            if not var_type:
+                var_type = self._lookup_struct_type(node.type_name)
 
         if not var_type:
             self.errors.append(SemanticError(
@@ -263,14 +354,24 @@ class SemanticAnalyzer(Visitor):
 
         is_initialized = False
         if node.initializer:
-            init_type = self._analyze_expression(node.initializer)
-            is_initialized = True
+            if isinstance(node.initializer, list):
+                is_initialized = True
+                if isinstance(node, ArrayDeclNode) and node.size:
+                    expected_size = node.size.value if isinstance(node.size, LiteralExprNode) else None
+                    if expected_size and len(node.initializer) != expected_size:
+                        self.errors.append(SemanticError(
+                            f"array initializer size mismatch: expected {expected_size}, got {len(node.initializer)}",
+                            node.line, node.column
+                        ))
+            else:
+                init_type = self._analyze_expression(node.initializer)
+                is_initialized = True
 
-            if init_type and not TypeCompatibility.is_compatible(var_type, init_type):
-                self.errors.append(TypeMismatchError(
-                    var_type.name, init_type.name, node.line, node.column,
-                    "variable initialization"
-                ))
+                if init_type and not TypeCompatibility.is_compatible(var_type, init_type):
+                    self.errors.append(TypeMismatchError(
+                        var_type.name, init_type.name, node.line, node.column,
+                        "variable initialization"
+                    ))
 
         info = SymbolInfo(
             name=node.name,
@@ -360,6 +461,8 @@ class SemanticAnalyzer(Visitor):
         """Анализирует оператор-выражение."""
         self._analyze_expression(node.expression)
 
+    # ============= АНАЛИЗ ВЫРАЖЕНИЙ =============
+
     def _analyze_expression(self, node: ExpressionNode) -> Optional[Type]:
         """Анализирует выражение и возвращает его тип."""
         if isinstance(node, LiteralExprNode):
@@ -378,12 +481,69 @@ class SemanticAnalyzer(Visitor):
             return self._analyze_grouping(node)
         elif isinstance(node, CastExprNode):
             return self._analyze_cast(node)
-
+        elif isinstance(node, ArrayAccessExprNode):
+            return self._analyze_array_access(node)
+        elif isinstance(node, StructFieldAccessExprNode):
+            return self._analyze_struct_field_access(node)
         return None
+
+    def _analyze_array_access(self, node: ArrayAccessExprNode) -> Optional[Type]:
+        """Анализирует доступ к элементу массива."""
+        if isinstance(node.array, IdentifierExprNode):
+            array_info = self.symbol_table.lookup(node.array.name)
+            if not array_info:
+                self.errors.append(UndeclaredIdentifierError(
+                    node.array.name, node.array.line, node.array.column
+                ))
+                return None
+
+            if not hasattr(array_info.type, 'is_array') or not array_info.type.is_array:
+                self.errors.append(SemanticError(
+                    f"'{node.array.name}' is not an array", node.array.line, node.array.column
+                ))
+                return None
+
+        index_type = self._analyze_expression(node.index)
+        if index_type and index_type.name != 'int':
+            self.errors.append(TypeMismatchError(
+                "int", index_type.name, node.index.line, node.index.column,
+                "array index"
+            ))
+
+        if array_info and array_info.type and array_info.type.element_type:
+            return array_info.type.element_type
+        return self.builtin_types['int']
+
+    def _analyze_struct_field_access(self, node: StructFieldAccessExprNode) -> Optional[Type]:
+        """Анализирует доступ к полю структуры."""
+        if isinstance(node.struct, IdentifierExprNode):
+            struct_info = self.symbol_table.lookup(node.struct.name)
+            if not struct_info:
+                self.errors.append(UndeclaredIdentifierError(
+                    node.struct.name, node.struct.line, node.struct.column
+                ))
+                return None
+
+            if not struct_info.type or not struct_info.type.is_struct:
+                self.errors.append(SemanticError(
+                    f"'{node.struct.name}' is not a struct", node.struct.line, node.struct.column
+                ))
+                return None
+
+            field_type = struct_info.type.fields.get(node.field_name)
+            if not field_type:
+                self.errors.append(SemanticError(
+                    f"struct '{struct_info.type.name}' has no field '{node.field_name}'",
+                    node.line, node.column
+                ))
+                return None
+
+            return field_type
+
+        return self.builtin_types['int']
 
     def _analyze_literal(self, node: LiteralExprNode) -> Type:
         """Определяет тип литерала."""
-        # Сначала проверяем bool (самый специфичный)
         if isinstance(node.value, bool):
             return self.builtin_types['bool']
         elif isinstance(node.value, int):
@@ -394,7 +554,6 @@ class SemanticAnalyzer(Visitor):
             return self.builtin_types['string']
         elif node.value is None:
             return self.builtin_types['void']
-
         return self.builtin_types['void']
 
     def _analyze_identifier(self, node: IdentifierExprNode) -> Optional[Type]:
@@ -408,7 +567,6 @@ class SemanticAnalyzer(Visitor):
             ))
             return None
 
-        # ПРОВЕРКА ИНИЦИАЛИЗАЦИИ - ЭТО ОШИБКА!
         if info.kind in (SymbolKind.VARIABLE, SymbolKind.PARAMETER):
             if not info.is_initialized:
                 self.errors.append(UseBeforeDeclarationError(
@@ -457,15 +615,75 @@ class SemanticAnalyzer(Visitor):
         return result_type
 
     def _analyze_assignment(self, node: AssignmentExprNode) -> Optional[Type]:
-        """Анализирует присваивание."""
-        if not isinstance(node.target, IdentifierExprNode):
+        """Анализирует присваивание с поддержкой массивов и структур."""
+        # Присваивание в элемент массива: arr[index] = value
+        if isinstance(node.target, ArrayAccessExprNode):
+            array_info = None
+            if isinstance(node.target.array, IdentifierExprNode):
+                array_info = self.symbol_table.lookup(node.target.array.name)
+                if not array_info:
+                    self.errors.append(UndeclaredIdentifierError(
+                        node.target.array.name, node.target.line, node.target.column
+                    ))
+                    return None
+
+            # Анализируем индекс
+            index_type = self._analyze_expression(node.target.index)
+            if index_type and index_type.name != 'int':
+                self.errors.append(TypeMismatchError(
+                    "int", index_type.name, node.target.index.line, node.target.index.column,
+                    "array index"
+                ))
+
+            # Анализируем значение
+            value_type = self._analyze_expression(node.value)
+
+            if array_info:
+                array_info.is_initialized = True
+
+            return value_type
+
+        # Присваивание в поле структуры: struct.field = value
+        elif isinstance(node.target, StructFieldAccessExprNode):
+            struct_info = None
+            if isinstance(node.target.struct, IdentifierExprNode):
+                struct_info = self.symbol_table.lookup(node.target.struct.name)
+                if not struct_info:
+                    self.errors.append(UndeclaredIdentifierError(
+                        node.target.struct.name, node.target.line, node.target.column
+                    ))
+                    return None
+
+                if struct_info.type and struct_info.type.is_struct:
+                    field_type = struct_info.type.fields.get(node.target.field_name)
+                    if not field_type:
+                        self.errors.append(SemanticError(
+                            f"struct '{struct_info.type.name}' has no field '{node.target.field_name}'",
+                            node.target.line, node.target.column
+                        ))
+                        return None
+                else:
+                    self.errors.append(SemanticError(
+                        f"'{node.target.struct.name}' is not a struct",
+                        node.target.struct.line, node.target.struct.column
+                    ))
+                    return None
+
+            value_type = self._analyze_expression(node.value)
+
+            if struct_info:
+                struct_info.is_initialized = True
+
+            return value_type
+
+        # Обычное присваивание переменной
+        elif not isinstance(node.target, IdentifierExprNode):
             self.errors.append(InvalidAssignmentTargetError(node.line, node.column))
             return None
 
         target_name = node.target.name
-
-        # Сначала проверяем, существует ли переменная
         target_info = self.symbol_table.lookup(target_name)
+
         if not target_info:
             self.errors.append(UndeclaredIdentifierError(
                 target_name, node.target.line, node.target.column
@@ -475,13 +693,11 @@ class SemanticAnalyzer(Visitor):
         if target_info.kind in (SymbolKind.VARIABLE, SymbolKind.PARAMETER):
             target_info.is_initialized = True
 
-        # Анализируем значение
         value_type = self._analyze_expression(node.value)
 
         if not value_type:
             return None
 
-        # Проверяем совместимость типов
         if not TypeCompatibility.is_compatible(target_info.type, value_type):
             self.errors.append(TypeMismatchError(
                 target_info.type.name, value_type.name, node.line, node.column,
@@ -552,6 +768,8 @@ class SemanticAnalyzer(Visitor):
 
         return target_type
 
+    # ============= ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =============
+
     def _get_type_from_name(self, type_name: str) -> Optional[Type]:
         """Возвращает тип по имени (только встроенные типы)."""
         return self.builtin_types.get(type_name)
@@ -618,18 +836,16 @@ class SemanticAnalyzer(Visitor):
                 return field.line
         return struct_node.line
 
-    # semantic/analyzer.py
+    # ============= ПОСТРОЕНИЕ ДЕКОРИРОВАННОГО AST =============
 
     def _build_decorated_ast(self, ast: ProgramNode) -> DecoratedProgram:
         """Строит декорированное AST."""
         decorated = DecoratedProgram(ast, self.symbol_table)
 
-        # Заполняем declarations
         for decl in ast.declarations:
             if isinstance(decl, FunctionDeclNode):
                 func_info = self.symbol_table.lookup(decl.name)
                 if func_info:
-                    # Создаем декорированную функцию
                     decorated_func = self._decorate_function(decl, func_info)
                     decorated.declarations.append(decorated_func)
             elif isinstance(decl, StructDeclNode):
@@ -642,6 +858,11 @@ class SemanticAnalyzer(Visitor):
                 if var_info:
                     decorated_var = self._decorate_var(decl, var_info)
                     decorated.declarations.append(decorated_var)
+            elif isinstance(decl, ArrayDeclNode):
+                var_info = self.symbol_table.lookup(decl.name)
+                if var_info:
+                    decorated_var = self._decorate_var(decl, var_info)
+                    decorated.declarations.append(decorated_var)
 
         self.decorated_program = decorated
         return decorated
@@ -650,7 +871,6 @@ class SemanticAnalyzer(Visitor):
         """Создает декорированную функцию."""
         from semantic.decorated_ast import DecoratedFunction, DecoratedParam, DecoratedBlock
 
-        # Параметры
         params = []
         for param in node.parameters:
             param_info = self.symbol_table.lookup(param.name)
@@ -661,9 +881,7 @@ class SemanticAnalyzer(Visitor):
                 decorated_param = DecoratedParam(param, param_type or Type('void'), param_info)
                 params.append(decorated_param)
 
-        # Тело (упрощенно - создаем пустой блок, так как тело уже проанализировано)
         body = DecoratedBlock(node.body, [])
-
         return_type = func_info.return_type_node or self.builtin_types['void']
         return DecoratedFunction(node, return_type, params, body, func_info)
 
@@ -681,13 +899,14 @@ class SemanticAnalyzer(Visitor):
 
         return DecoratedStruct(node, fields, struct_info)
 
-    def _decorate_var(self, node: VarDeclNode, var_info: SymbolInfo) -> DecoratedVar:
+    def _decorate_var(self, node: Union[VarDeclNode, ArrayDeclNode], var_info: SymbolInfo) -> DecoratedVar:
         """Создает декорированную переменную."""
         from semantic.decorated_ast import DecoratedVar
 
         var_type = var_info.type
-        # initializer будет None, так как мы не анализируем его здесь
         return DecoratedVar(node, var_type, None, var_info)
+
+    # ============= ПУБЛИЧНЫЕ МЕТОДЫ =============
 
     def get_errors(self) -> List[SemanticError]:
         """Возвращает список семантических ошибок."""

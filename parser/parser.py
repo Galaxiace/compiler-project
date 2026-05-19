@@ -198,7 +198,7 @@ class Parser:
 
     def parse_declaration(self) -> Optional[DeclarationNode]:
         """
-        Declaration ::= FunctionDecl | StructDecl | VarDecl
+        Declaration ::= FunctionDecl | StructDecl | VarDecl | ArrayDecl
         """
         token = self.peek()
 
@@ -333,9 +333,9 @@ class Parser:
 
         return StructDeclNode(name, fields, token.line, token.column)
 
-    def parse_var_decl(self) -> VarDeclNode:
+    def parse_var_decl(self) -> Union[VarDeclNode, ArrayDeclNode]:
         """
-        VarDecl ::= Type Identifier [ "=" Expression ] ";"
+        VarDecl ::= Type Identifier [ "[" Expression "]" ] [ "=" Expression ] ";"
         """
         # Тип переменной - может быть ключевым словом (int, float, bool, void) или идентификатором
         if self.match(TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.VOID, TokenType.IDENTIFIER):
@@ -349,13 +349,33 @@ class Parser:
         name_token = self.consume(TokenType.IDENTIFIER, "Ожидалось имя переменной")
         name = name_token.lexeme
 
+        # Проверка на массив
+        size = None
+        if self.match(TokenType.LBRACKET):
+            size = self.parse_expression()
+            self.consume(TokenType.RBRACKET, "Ожидалась ']' после размера массива")
+
         # Необязательная инициализация
         initializer = None
         if self.match(TokenType.ASSIGN):
-            initializer = self.parse_expression()
+            if size and self.match(TokenType.LBRACE):
+                # Инициализация массива: {1, 2, 3}
+                elements = []
+                if not self.check(TokenType.RBRACE):
+                    elements.append(self.parse_expression())
+                    while self.match(TokenType.COMMA):
+                        elements.append(self.parse_expression())
+                self.consume(TokenType.RBRACE, "Ожидалась '}' после инициализатора массива")
+                initializer = elements
+            else:
+                initializer = self.parse_expression()
 
         # Точка с запятой
         self.consume(TokenType.SEMICOLON, "Ожидалась ';' после объявления переменной")
+
+        # Если это массив, создаем ArrayDeclNode
+        if size:
+            return ArrayDeclNode(type_name, name, size, type_token.line, type_token.column, initializer)
 
         return VarDeclNode(type_name, name, type_token.line, type_token.column, initializer)
 
@@ -712,7 +732,7 @@ class Parser:
 
     def parse_postfix(self) -> ExpressionNode:
         """
-        Postfix ::= Primary { "(" [ Arguments ] ")" | "." Identifier }
+        Postfix ::= Primary { "(" [ Arguments ] ")" | "[" Expression "]" | "." Identifier }
         """
         expr = self.parse_primary()
 
@@ -726,17 +746,19 @@ class Parser:
                         arguments.append(self.parse_expression())
                 self.consume(TokenType.RPAREN, "Ожидалась ')' после аргументов")
 
-                if isinstance(expr, IdentifierExprNode):
-                    expr = CallExprNode(expr, arguments, expr.line, expr.column)
-                else:
-                    expr = CallExprNode(expr, arguments, expr.line, expr.column)
+                expr = CallExprNode(expr, arguments, expr.line, expr.column)
+
+            elif self.match(TokenType.LBRACKET):
+                # НОВОЕ: доступ к элементу массива arr[index]
+                index = self.parse_expression()
+                self.consume(TokenType.RBRACKET, "Ожидалась ']' после индекса")
+                expr = ArrayAccessExprNode(expr, index, expr.line, expr.column)
 
             elif self.match(TokenType.DOT):
-                # Доступ к полю структуры
+                # НОВОЕ: доступ к полю структуры struct.field
                 field_token = self.consume(TokenType.IDENTIFIER, "Ожидалось имя поля после '.'")
-                expr = BinaryExprNode(expr, '.',
-                                      IdentifierExprNode(field_token.lexeme, field_token.line, field_token.column),
-                                      expr.line, expr.column)
+                expr = StructFieldAccessExprNode(expr, field_token.lexeme, expr.line, expr.column)
+
             else:
                 break
 

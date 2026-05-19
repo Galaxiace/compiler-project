@@ -209,7 +209,8 @@ def test_logical_operations():
     }
     """
     ir, _ = generate_ir(source)
-    assert "AND" in ir
+    # Проверяем наличие short-circuit (land) ИЛИ обычного AND
+    assert "land" in ir or "AND" in ir, "Logical operation not found"
 
 
 def test_unary_operations():

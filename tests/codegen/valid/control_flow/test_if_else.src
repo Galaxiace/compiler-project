@@ -1,0 +1,16 @@
+// test_if_else.src
+// Тест if-else оператора
+
+fn main() -> int {
+    int x = 5;
+    int y = 10;
+    int result = 0;
+
+    if (x < y) {
+        result = 1;
+    } else {
+        result = 0;
+    }
+
+    return result;  // Ожидается: 1
+}

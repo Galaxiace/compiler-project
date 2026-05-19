@@ -21,6 +21,7 @@ class NodeType(Enum):
     STRUCT_DECL = auto()
     VAR_DECL = auto()
     PARAM = auto()
+    ARRAY_DECL = auto()  # НОВОЕ: объявление массива
 
     # Statements (операторы)
     BLOCK = auto()
@@ -40,6 +41,8 @@ class NodeType(Enum):
     ASSIGNMENT = auto()
     GROUPING = auto()
     CAST = auto()
+    ARRAY_ACCESS = auto()        # НОВОЕ: доступ к элементу массива
+    STRUCT_FIELD_ACCESS = auto() # НОВОЕ: доступ к полю структуры
 
 
 @dataclass
@@ -229,6 +232,44 @@ class CastExprNode(ExpressionNode):
         self.expression = expression
 
 
+# ============= НОВЫЕ УЗЛЫ ДЛЯ МАССИВОВ И СТРУКТУР =============
+
+@dataclass
+class ArrayAccessExprNode(ExpressionNode):
+    """
+    Доступ к элементу массива: arr[index]
+
+    Пример:
+        arr[5]
+        matrix[i][j]
+    """
+    array: ExpressionNode
+    index: ExpressionNode
+
+    def __init__(self, array: ExpressionNode, index: ExpressionNode, line: int, column: int):
+        super().__init__(NodeType.ARRAY_ACCESS, line, column)
+        self.array = array
+        self.index = index
+
+
+@dataclass
+class StructFieldAccessExprNode(ExpressionNode):
+    """
+    Доступ к полю структуры: struct.field
+
+    Пример:
+        point.x
+        person.name
+    """
+    struct: ExpressionNode
+    field_name: str
+
+    def __init__(self, struct: ExpressionNode, field_name: str, line: int, column: int):
+        super().__init__(NodeType.STRUCT_FIELD_ACCESS, line, column)
+        self.struct = struct
+        self.field_name = field_name
+
+
 # ============= Statement Nodes (Узлы операторов) =============
 
 @dataclass
@@ -399,6 +440,29 @@ class VarDeclNode(DeclarationNode, StatementNode):
         super().__init__(NodeType.VAR_DECL, line, column)
         self.type_name = type_name
         self.name = name
+        self.initializer = initializer
+
+
+@dataclass
+class ArrayDeclNode(DeclarationNode, StatementNode):
+    """
+    Объявление массива: тип имя[размер] [= инициализатор];
+
+    Примеры:
+        int arr[10];
+        int arr[5] = {1, 2, 3, 4, 5};
+    """
+    type_name: str
+    name: str
+    size: Optional[ExpressionNode]
+    initializer: Optional[List[ExpressionNode]] = None
+
+    def __init__(self, type_name: str, name: str, size: Optional[ExpressionNode],
+                 line: int, column: int, initializer: Optional[List[ExpressionNode]] = None):
+        super().__init__(NodeType.ARRAY_DECL, line, column)
+        self.type_name = type_name
+        self.name = name
+        self.size = size
         self.initializer = initializer
 
 

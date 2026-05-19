@@ -3,8 +3,8 @@
 Генератор IR из декорированного AST.
 """
 
-from typing import List, Optional, Any, Dict, Tuple
 from semantic.symbol_table import SymbolTable, SymbolInfo, SymbolKind, Type
+from typing import List, Optional, Any, Dict, Tuple, Union
 from semantic.decorated_ast import (
     DecoratedProgram, DecoratedFunction, DecoratedBlock, DecoratedVar,
     DecoratedIf, DecoratedWhile, DecoratedFor, DecoratedReturn,
@@ -14,12 +14,12 @@ from semantic.decorated_ast import (
 )
 
 from parser.ast import (
-    ProgramNode, FunctionDeclNode, VarDeclNode, StructDeclNode,
+    ProgramNode, FunctionDeclNode, VarDeclNode, StructDeclNode, ArrayDeclNode,
     BlockStmtNode, IfStmtNode, WhileStmtNode, ForStmtNode,
     ReturnStmtNode, ExprStmtNode, EmptyStmtNode,
     LiteralExprNode, IdentifierExprNode, BinaryExprNode,
     UnaryExprNode, CallExprNode, AssignmentExprNode, GroupingExprNode,
-    CastExprNode
+    CastExprNode, ArrayAccessExprNode, StructFieldAccessExprNode
 )
 
 from .control_flow import IRProgram, IRFunction
@@ -56,9 +56,11 @@ class IRGenerator:
                 self._generate_function_from_ast(decl)
             elif isinstance(decl, VarDeclNode):
                 self._generate_global_var_from_ast(decl)
+            elif isinstance(decl, ArrayDeclNode):
+                self._generate_global_var_from_ast(decl)
         return self.program
 
-    def _generate_global_var_from_ast(self, node: VarDeclNode):
+    def _generate_global_var_from_ast(self, node: Union[VarDeclNode, ArrayDeclNode]):
         var_info = self.symbol_table.lookup(node.name)
         var_type = var_info.type if var_info else None
         var_op = Global(node.name, var_type)
@@ -119,6 +121,8 @@ class IRGenerator:
 
         if isinstance(stmt, VarDeclNode):
             self._generate_var_decl_from_ast(stmt)
+        elif isinstance(stmt, ArrayDeclNode):
+            self._generate_var_decl_from_ast(stmt)
         elif isinstance(stmt, IfStmtNode):
             self._generate_if_from_ast(stmt)
         elif isinstance(stmt, WhileStmtNode):
@@ -134,30 +138,77 @@ class IRGenerator:
         elif isinstance(stmt, EmptyStmtNode):
             pass
 
-    def _generate_var_decl_from_ast(self, node: VarDeclNode):
+    def _generate_var_decl_from_ast(self, node: Union[VarDeclNode, ArrayDeclNode]):
+        """Анализирует объявление переменной или массива."""
         var_info = self.symbol_table.lookup(node.name)
-        var_type = var_info.type if var_info else None
 
-        if not var_type:
-            if node.type_name == 'int':
-                var_type = Type('int', size_bytes=4, alignment=4)
-            elif node.type_name == 'float':
-                var_type = Type('float', size_bytes=4, alignment=4)
-            elif node.type_name == 'bool':
-                var_type = Type('bool', size_bytes=1, alignment=1)
+        if isinstance(node, ArrayDeclNode):
+            # Массив - выделяем память на стеке через ALLOCA
+            element_size = 4
 
-        self.current_function.local_vars[node.name] = var_type
+            if node.size and isinstance(node.size, LiteralExprNode):
+                array_size = node.size.value
+            else:
+                array_size = 10
 
-        var_temp = self.current_function.new_temp(f"var_{node.name}", var_type)
-        self.current_function.var_to_temp[node.name] = var_temp
+            element_type = Type('int', size_bytes=4, alignment=4)
+            array_type = Type(
+                name=f"array_{node.type_name}",
+                is_array=True,
+                array_size=array_size,
+                element_type=element_type,
+                size_bytes=array_size * element_size
+            )
 
-        if node.initializer:
-            self._generate_expression_from_ast(node.initializer)
-            init_val = self.last_value
-            self._emit(IRInstruction(IROpcode.MOVE, [var_temp, init_val]), node)
+            self.current_function.local_vars[node.name] = array_type
+
+            # Создаем временную для указателя на массив
+            array_ptr = self.current_function.new_temp(f"array_{node.name}", array_type)
+            self.current_function.var_to_temp[node.name] = array_ptr
+
+            # Выделяем память на стеке через ALLOCA
+            total_size = array_size * element_size
+            self._emit_alloca(array_ptr, total_size, node)
+
+            # Инициализация массива значениями
+            if node.initializer and isinstance(node.initializer, list):
+                for i, init_expr in enumerate(node.initializer):
+                    if i < array_size:
+                        self._generate_expression_from_ast(init_expr)
+                        init_val = self.last_value
+
+                        offset_temp = self.current_function.new_temp("offset", Type('int'))
+                        self._emit(IRInstruction(IROpcode.MUL, [offset_temp, Lit(i), Lit(element_size)]), node)
+                        addr_temp = self.current_function.new_temp("addr", Type('ptr'))
+                        self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), node)
+                        self._emit_store(addr_temp, init_val, node)
+
         else:
-            zero = Lit(0, var_type)
-            self._emit(IRInstruction(IROpcode.MOVE, [var_temp, zero]), node)
+            # Обычная переменная
+            var_type = var_info.type if var_info else None
+
+            if not var_type:
+                if node.type_name == 'int':
+                    var_type = Type('int', size_bytes=4, alignment=4)
+                elif node.type_name == 'float':
+                    var_type = Type('float', size_bytes=4, alignment=4)
+                elif node.type_name == 'bool':
+                    var_type = Type('bool', size_bytes=1, alignment=1)
+                else:
+                    var_type = Type('int', size_bytes=4, alignment=4)
+
+            self.current_function.local_vars[node.name] = var_type
+
+            var_temp = self.current_function.new_temp(f"var_{node.name}", var_type)
+            self.current_function.var_to_temp[node.name] = var_temp
+
+            if node.initializer:
+                self._generate_expression_from_ast(node.initializer)
+                init_val = self.last_value
+                self._emit(IRInstruction(IROpcode.MOVE, [var_temp, init_val]), node)
+            else:
+                zero = Lit(0, var_type)
+                self._emit(IRInstruction(IROpcode.MOVE, [var_temp, zero]), node)
 
     def _new_label(self, base: str) -> str:
         self.label_counter += 1
@@ -300,6 +351,72 @@ class IRGenerator:
     def _generate_expr_stmt_from_ast(self, node: ExprStmtNode):
         self._generate_expression_from_ast(node.expression)
 
+    def _generate_logical_and(self, node: BinaryExprNode):
+        result_type = self._get_type_from_symbol_table(node)
+        result_temp = self.current_function.new_temp("land", result_type)
+
+        eval_right_label = self._new_label("land_eval_right")
+        true_label = self._new_label("land_true")
+        false_label = self._new_label("land_false")
+        end_label = self._new_label("land_end")
+
+        self._generate_expression_from_ast(node.left)
+        left_val = self.last_value
+
+        self._emit(IRInstruction(IROpcode.JUMP_IF_NOT, [left_val, Label(false_label)]), node)
+        self._emit_jump(eval_right_label, node)
+
+        self.current_block = self.current_function.create_block(eval_right_label)
+        self._generate_expression_from_ast(node.right)
+        right_val = self.last_value
+
+        self._emit(IRInstruction(IROpcode.JUMP_IF_NOT, [right_val, Label(false_label)]), node)
+        self._emit_jump(true_label, node)
+
+        self.current_block = self.current_function.create_block(true_label)
+        self._emit(IRInstruction(IROpcode.MOVE, [result_temp, Lit(1, result_type)]), node)
+        self._emit_jump(end_label, node)
+
+        self.current_block = self.current_function.create_block(false_label)
+        self._emit(IRInstruction(IROpcode.MOVE, [result_temp, Lit(0, result_type)]), node)
+        self._emit_jump(end_label, node)
+
+        self.current_block = self.current_function.create_block(end_label)
+        self.last_value = result_temp
+
+    def _generate_logical_or(self, node: BinaryExprNode):
+        result_type = self._get_type_from_symbol_table(node)
+        result_temp = self.current_function.new_temp("lor", result_type)
+
+        eval_right_label = self._new_label("lor_eval_right")
+        true_label = self._new_label("lor_true")
+        false_label = self._new_label("lor_false")
+        end_label = self._new_label("lor_end")
+
+        self._generate_expression_from_ast(node.left)
+        left_val = self.last_value
+
+        self._emit(IRInstruction(IROpcode.JUMP_IF, [left_val, Label(true_label)]), node)
+        self._emit_jump(eval_right_label, node)
+
+        self.current_block = self.current_function.create_block(eval_right_label)
+        self._generate_expression_from_ast(node.right)
+        right_val = self.last_value
+
+        self._emit(IRInstruction(IROpcode.JUMP_IF, [right_val, Label(true_label)]), node)
+        self._emit_jump(false_label, node)
+
+        self.current_block = self.current_function.create_block(true_label)
+        self._emit(IRInstruction(IROpcode.MOVE, [result_temp, Lit(1, result_type)]), node)
+        self._emit_jump(end_label, node)
+
+        self.current_block = self.current_function.create_block(false_label)
+        self._emit(IRInstruction(IROpcode.MOVE, [result_temp, Lit(0, result_type)]), node)
+        self._emit_jump(end_label, node)
+
+        self.current_block = self.current_function.create_block(end_label)
+        self.last_value = result_temp
+
     def _generate_expression_from_ast(self, expr):
         self.current_node = expr
 
@@ -327,15 +444,20 @@ class IRGenerator:
                     self.last_value = result
 
         elif isinstance(expr, BinaryExprNode):
-            self._generate_expression_from_ast(expr.left)
-            left_val = self.last_value
-            self._generate_expression_from_ast(expr.right)
-            right_val = self.last_value
+            if expr.operator == '&&':
+                self._generate_logical_and(expr)
+            elif expr.operator == '||':
+                self._generate_logical_or(expr)
+            else:
+                self._generate_expression_from_ast(expr.left)
+                left_val = self.last_value
+                self._generate_expression_from_ast(expr.right)
+                right_val = self.last_value
 
-            expr_type = self._get_type_from_symbol_table(expr)
-            result = self.current_function.new_temp("binop", expr_type)
-            self._emit_binary(result, expr.operator, left_val, right_val, expr_type, expr)
-            self.last_value = result
+                expr_type = self._get_type_from_symbol_table(expr)
+                result = self.current_function.new_temp("binop", expr_type)
+                self._emit_binary(result, expr.operator, left_val, right_val, expr_type, expr)
+                self.last_value = result
 
         elif isinstance(expr, UnaryExprNode):
             self._generate_expression_from_ast(expr.operand)
@@ -358,7 +480,62 @@ class IRGenerator:
         elif isinstance(expr, CastExprNode):
             self._generate_expression_from_ast(expr.expression)
 
+        elif isinstance(expr, ArrayAccessExprNode):
+            self._generate_array_access(expr)
+
+        elif isinstance(expr, StructFieldAccessExprNode):
+            self._generate_struct_field_access(expr)
+
         return self.last_value
+
+    def _generate_array_access(self, node: ArrayAccessExprNode):
+        """
+        Генерация доступа к элементу массива arr[index]
+        """
+        self._generate_expression_from_ast(node.array)
+        array_ptr = self.last_value
+
+        self._generate_expression_from_ast(node.index)
+        index = self.last_value
+
+        element_size = 4
+
+        offset_temp = self.current_function.new_temp("offset", Type('int'))
+        self._emit(IRInstruction(IROpcode.MUL, [offset_temp, index, Lit(element_size)]), node)
+
+        addr_temp = self.current_function.new_temp("addr", Type('ptr'))
+        self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), node)
+
+        elem_type = self._get_type_from_symbol_table(node)
+        result = self.current_function.new_temp("array_elem", elem_type)
+        self._emit_load(result, addr_temp, node)
+        self.last_value = result
+
+    def _generate_struct_field_access(self, node: StructFieldAccessExprNode):
+        """
+        Генерация доступа к полю структуры struct.field
+        """
+        self._generate_expression_from_ast(node.struct)
+        struct_ptr = self.last_value
+
+        field_offset = 0
+        if isinstance(node.struct, IdentifierExprNode):
+            struct_info = self.symbol_table.lookup(node.struct.name)
+            if struct_info and struct_info.type and struct_info.type.is_struct:
+                field_names = list(struct_info.type.fields.keys())
+                if node.field_name in field_names:
+                    field_offset = field_names.index(node.field_name) * 4
+
+        addr_temp = self.current_function.new_temp("field_addr", Type('ptr'))
+        if field_offset > 0:
+            self._emit(IRInstruction(IROpcode.ADD, [addr_temp, struct_ptr, Lit(field_offset)]), node)
+        else:
+            self._emit(IRInstruction(IROpcode.MOVE, [addr_temp, struct_ptr]), node)
+
+        field_type = self._get_type_from_symbol_table(node)
+        result = self.current_function.new_temp("field", field_type)
+        self._emit_load(result, addr_temp, node)
+        self.last_value = result
 
     def _generate_call_from_ast(self, expr: CallExprNode):
         args = []
@@ -377,7 +554,63 @@ class IRGenerator:
         self.last_value = result
 
     def _generate_assignment_from_ast(self, expr: AssignmentExprNode):
-        if expr.operator in ('+=', '-=', '*=', '/=', '%='):
+        # Присваивание в элемент массива: arr[index] = value
+        if isinstance(expr.target, ArrayAccessExprNode):
+            # Вычисляем адрес массива
+            self._generate_expression_from_ast(expr.target.array)
+            array_ptr = self.last_value
+
+            # Вычисляем индекс
+            self._generate_expression_from_ast(expr.target.index)
+            index = self.last_value
+
+            element_size = 4
+            offset_temp = self.current_function.new_temp("offset", Type('int'))
+            self._emit(IRInstruction(IROpcode.MUL, [offset_temp, index, Lit(element_size)]), expr)
+
+            addr_temp = self.current_function.new_temp("addr", Type('ptr'))
+            self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), expr)
+
+            # Вычисляем значение
+            self._generate_expression_from_ast(expr.value)
+            val = self.last_value
+
+            # Сохраняем значение
+            self._emit_store(addr_temp, val, expr)
+            self.last_value = val
+            return
+
+        # Присваивание в поле структуры: struct.field = value
+        elif isinstance(expr.target, StructFieldAccessExprNode):
+            self._generate_expression_from_ast(expr.target.struct)
+            struct_ptr = self.last_value
+
+            # Вычисляем смещение поля
+            field_offset = 0
+            if isinstance(expr.target.struct, IdentifierExprNode):
+                struct_info = self.symbol_table.lookup(expr.target.struct.name)
+                if struct_info and struct_info.type and struct_info.type.is_struct:
+                    field_names = list(struct_info.type.fields.keys())
+                    if expr.target.field_name in field_names:
+                        field_offset = field_names.index(expr.target.field_name) * 4
+
+            addr_temp = self.current_function.new_temp("field_addr", Type('ptr'))
+            if field_offset > 0:
+                self._emit(IRInstruction(IROpcode.ADD, [addr_temp, struct_ptr, Lit(field_offset)]), expr)
+            else:
+                self._emit(IRInstruction(IROpcode.MOVE, [addr_temp, struct_ptr]), expr)
+
+            # Вычисляем значение
+            self._generate_expression_from_ast(expr.value)
+            val = self.last_value
+
+            # Сохраняем значение
+            self._emit_store(addr_temp, val, expr)
+            self.last_value = val
+            return
+
+        # Составные операторы присваивания (+=, -=, etc)
+        elif expr.operator in ('+=', '-=', '*=', '/=', '%='):
             if isinstance(expr.target, IdentifierExprNode):
                 var_temp = self.current_function.var_to_temp.get(expr.target.name)
                 if var_temp:
@@ -390,32 +623,33 @@ class IRGenerator:
                     self._emit(IRInstruction(IROpcode.MOVE, [var_temp, result]), expr)
                     self.last_value = var_temp
                     return
-        else:
-            self._generate_expression_from_ast(expr.value)
-            val = self.last_value
 
-            if isinstance(expr.target, IdentifierExprNode):
-                var_temp = self.current_function.var_to_temp.get(expr.target.name)
-                if var_temp:
-                    self._emit(IRInstruction(IROpcode.MOVE, [var_temp, val]), expr)
-                    self.last_value = var_temp
-                else:
-                    found = False
-                    for param in self.current_function.parameters:
-                        if param.value == expr.target.name:
-                            expr_type = self._get_type_from_symbol_table(expr.target)
-                            param_temp = self.current_function.new_temp(f"param_{expr.target.name}", expr_type)
-                            self._emit(IRInstruction(IROpcode.MOVE, [param_temp, val]), expr)
-                            self.current_function.var_to_temp[expr.target.name] = param_temp
-                            self.last_value = param_temp
-                            found = True
-                            break
+        # Обычное присваивание переменной
+        self._generate_expression_from_ast(expr.value)
+        val = self.last_value
 
-                    if not found:
+        if isinstance(expr.target, IdentifierExprNode):
+            var_temp = self.current_function.var_to_temp.get(expr.target.name)
+            if var_temp:
+                self._emit(IRInstruction(IROpcode.MOVE, [var_temp, val]), expr)
+                self.last_value = var_temp
+            else:
+                found = False
+                for param in self.current_function.parameters:
+                    if param.value == expr.target.name:
                         expr_type = self._get_type_from_symbol_table(expr.target)
-                        global_var = Global(expr.target.name, expr_type)
-                        self._emit_store(global_var, val, expr)
-                        self.last_value = val
+                        param_temp = self.current_function.new_temp(f"param_{expr.target.name}", expr_type)
+                        self._emit(IRInstruction(IROpcode.MOVE, [param_temp, val]), expr)
+                        self.current_function.var_to_temp[expr.target.name] = param_temp
+                        self.last_value = param_temp
+                        found = True
+                        break
+
+                if not found:
+                    expr_type = self._get_type_from_symbol_table(expr.target)
+                    global_var = Global(expr.target.name, expr_type)
+                    self._emit_store(global_var, val, expr)
+                    self.last_value = val
 
     def _get_type_from_symbol_table(self, expr) -> Optional[Type]:
         if isinstance(expr, IdentifierExprNode):
@@ -445,17 +679,24 @@ class IRGenerator:
         opcode_map = {
             '+': IROpcode.ADD, '-': IROpcode.SUB, '*': IROpcode.MUL,
             '/': IROpcode.DIV, '%': IROpcode.MOD,
-            '&&': IROpcode.AND, '||': IROpcode.OR,
             '==': IROpcode.CMP_EQ, '!=': IROpcode.CMP_NE,
             '<': IROpcode.CMP_LT, '<=': IROpcode.CMP_LE,
             '>': IROpcode.CMP_GT, '>=': IROpcode.CMP_GE,
-            '^': IROpcode.XOR
+            '^': IROpcode.XOR,
+            '&': IROpcode.AND, '|': IROpcode.OR
         }
         opcode = opcode_map.get(op)
         if opcode:
             instr = IRInstruction(opcode, [dest, left, right])
             if ir_type:
                 dest.ir_type = ir_type
+
+            if ir_type and ir_type.name == 'float' and opcode in [
+                IROpcode.CMP_EQ, IROpcode.CMP_NE, IROpcode.CMP_LT,
+                IROpcode.CMP_LE, IROpcode.CMP_GT, IROpcode.CMP_GE
+            ]:
+                instr.is_float_comparison = True
+
             self._emit(instr, node)
 
     def _emit_unary(self, dest: IROperand, op: str, operand: IROperand, node=None):

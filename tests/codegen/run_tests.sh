@@ -158,11 +158,25 @@ run_valid_test "$SCRIPT_DIR/valid/arithmetic_ops/test_add.src" "8"
 echo ""
 
 echo "--- Control Flow ---"
-run_valid_test "$SCRIPT_DIR/valid/control_flow/test_if.src" "1"
+# Тесты для if-else
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_if_else.src" "1"
+# Тесты для циклов
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_while.src" "45"
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_for.src" "45"
+# Тесты для вложенных конструкций
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_nested.src" "5"
+# Тесты для short-circuit evaluation
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_short_circuit.src" "0"
+# Тесты для логических операторов
+run_valid_test "$SCRIPT_DIR/valid/control_flow/test_logical_ops.src" "3"
 echo ""
 
 echo "--- Function Calls ---"
 run_valid_test "$SCRIPT_DIR/valid/function_calls/test_simple_call.src" "5"
+echo ""
+
+echo "--- Complex Expressions ---"
+run_valid_test "$SCRIPT_DIR/valid/complex_expressions/test_complex.src" "7"
 echo ""
 
 echo "--- Integration ---"

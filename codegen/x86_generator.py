@@ -1,8 +1,7 @@
 # codegen/x86_generator.py
 """
 Генератор x86-64 ассемблерного кода из IR представления.
-Следует соглашениям System V AMD64 ABI.
-Поддерживает int и float операции.
+Поддерживает int, float операции, массивы и структуры.
 """
 
 import sys
@@ -26,6 +25,7 @@ class X86Generator:
         self.emitted_labels = set()
         self.param_to_temp = {}
         self.pending_params = []
+        self.float_compare_counter = 0  # для уникальных меток
 
     def generate(self) -> str:
         self.output = []
@@ -48,7 +48,6 @@ class X86Generator:
             self.output.append("")
             self.output.append("section .rodata")
             for label, val in self.float_literals:
-                # float как 32-bit single precision
                 bits = struct.unpack('>I', struct.pack('>f', val))[0]
                 self.output.append(f"{label}: dd {bits}  ; float {val}")
 
@@ -67,6 +66,9 @@ class X86Generator:
                     data_lines.append(f"    {name}: dd 0.0")
                 elif type_name == 'bool':
                     bss_lines.append(f"    {name}: resb 1")
+                elif type_name.startswith('array'):
+                    size = getattr(var.ir_type, 'array_size', 10) * 4
+                    bss_lines.append(f"    {name}: resb {size}")
                 else:
                     bss_lines.append(f"    {name}: resq 1")
             else:
@@ -85,14 +87,12 @@ class X86Generator:
             self.output.append("")
 
     def _is_float_type(self, operand) -> bool:
-        """Проверяет, является ли операнд float по его IR типу."""
         if hasattr(operand, 'ir_type') and operand.ir_type:
             type_name = operand.ir_type.name if hasattr(operand.ir_type, 'name') else ''
             return type_name == 'float'
         return False
 
     def _is_float_op_str(self, op_str: str) -> bool:
-        """Проверяет, является ли строка операнда float литералом."""
         return 'LC' in op_str
 
     def _make_label(self, label: str) -> str:
@@ -106,8 +106,8 @@ class X86Generator:
         self.emitted_labels = set()
         self.param_to_temp = {}
         self.pending_params = []
+        self.float_compare_counter = 0
 
-        # Маппинг параметров
         for block in func.blocks:
             for instr in block.instructions:
                 if instr.opcode == IROpcode.MOVE:
@@ -119,21 +119,19 @@ class X86Generator:
                                 self.param_to_temp[param.value] = dest.value
                                 break
 
-        # Собираем временные переменные и их типы
         temps_in_func = {}
         for block in func.blocks:
             for instr in block.instructions:
                 for op in instr.operands:
                     if op.operand_type == IROperandType.TEMPORARY:
-                        size = 4  # default int
+                        size = 4
                         if self._is_float_type(op):
-                            size = 4  # float = 4 байта (single precision)
+                            size = 4
                         temps_in_func[op.value] = max(temps_in_func.get(op.value, 4), size)
 
         for temp_name, size in temps_in_func.items():
             self.current_stack_frame.allocate(temp_name, size)
 
-        # Локальные переменные
         for name, var_type in func.local_vars.items():
             size = 4
             if hasattr(var_type, 'size_bytes'):
@@ -143,10 +141,9 @@ class X86Generator:
                 size = type_sizes.get(var_type.name, 8)
             self.current_stack_frame.allocate(name, size)
 
-        # Параметры
         for param in func.parameters:
             param_name = param.value if hasattr(param, 'value') else str(param)
-            param_size = 4  # int и float по 4 байта в 32-bit режиме
+            param_size = 4
             if hasattr(param, 'ir_type') and param.ir_type:
                 type_name = param.ir_type.name if hasattr(param.ir_type, 'name') else 'int'
                 if type_name == 'float':
@@ -160,7 +157,6 @@ class X86Generator:
             elif param_name not in self.current_stack_frame.variables:
                 self.current_stack_frame.allocate(param_name, param_size)
 
-        # Пролог
         self.output.append(f"global {func.name}")
         self.output.append(f"{func.name}:")
         self._emit("push rbp")
@@ -172,7 +168,6 @@ class X86Generator:
 
         self._save_parameters(func)
 
-        # Тело функции
         for block in func.blocks:
             unique_label = self._make_label(block.label)
             if unique_label not in self.emitted_labels:
@@ -228,7 +223,6 @@ class X86Generator:
                         if line:
                             self._emit(line)
 
-        # Эпилог
         return_label = self._make_label(f"{func.name}_return")
         if return_label not in self.emitted_labels:
             self.emitted_labels.add(return_label)
@@ -239,7 +233,6 @@ class X86Generator:
         self.output.append("")
 
     def _save_parameters(self, func):
-        """Сохраняет параметры функции из регистров в стек."""
         int_regs = ['edi', 'esi', 'edx', 'ecx', 'r8d', 'r9d']
         float_regs = ['xmm0', 'xmm1', 'xmm2', 'xmm3', 'xmm4', 'xmm5', 'xmm6', 'xmm7']
         int_idx = 0
@@ -264,9 +257,20 @@ class X86Generator:
         opcode = instr.opcode
         ops = instr.operands
 
+        is_float_compare = getattr(instr, 'is_float_comparison', False)
         is_float = self._is_float_type(ops[0]) if ops else False
 
-        if opcode == IROpcode.MOVE:
+        # ============= ALLOCA - выделение памяти на стеке =============
+        if opcode == IROpcode.ALLOCA:
+            dest = self._op(ops[0])
+            size = ops[1].value
+            # Выделяем память на стеке
+            self._emit(f"sub rsp, {size}")
+            # Сохраняем указатель на выделенную память
+            self._emit(f"lea {dest}, [rsp]")
+            return None
+
+        elif opcode == IROpcode.MOVE:
             dest = self._op(ops[0])
             src = self._op(ops[1])
             if dest == src:
@@ -320,6 +324,27 @@ class X86Generator:
             cond = self._op(ops[0])
             target = self._make_label(ops[1].value)
             return f"cmp {cond}, 0\n    je {target}"
+
+        # ============= FLOATING POINT COMPARISONS =============
+        elif opcode in [IROpcode.CMP_EQ, IROpcode.CMP_NE, IROpcode.CMP_LT,
+                        IROpcode.CMP_LE, IROpcode.CMP_GT, IROpcode.CMP_GE]:
+
+            dest = self._op(ops[0])
+            left = self._op(ops[1])
+            right = self._op(ops[2])
+
+            if is_float_compare or self._is_float_type(ops[1]) or self._is_float_type(ops[2]):
+                return self._translate_float_comparison(opcode, dest, left, right)
+
+            setcc_map = {
+                IROpcode.CMP_EQ: "sete",
+                IROpcode.CMP_NE: "setne",
+                IROpcode.CMP_LT: "setl",
+                IROpcode.CMP_LE: "setle",
+                IROpcode.CMP_GT: "setg",
+                IROpcode.CMP_GE: "setge"
+            }
+            return f"mov eax, {left}\n    cmp eax, {right}\n    {setcc_map[opcode]} al\n    movzx eax, al\n    mov {dest}, eax"
 
         elif opcode == IROpcode.ADD:
             dest = self._op(ops[0])
@@ -397,18 +422,6 @@ class X86Generator:
                 return f"not {dest}"
             return f"mov eax, {src}\n    not eax\n    mov {dest}, eax"
 
-        elif opcode in [IROpcode.CMP_EQ, IROpcode.CMP_NE, IROpcode.CMP_LT,
-                        IROpcode.CMP_LE, IROpcode.CMP_GT, IROpcode.CMP_GE]:
-            dest = self._op(ops[0])
-            left = self._op(ops[1])
-            right = self._op(ops[2])
-            setcc_map = {
-                IROpcode.CMP_EQ: "sete", IROpcode.CMP_NE: "setne",
-                IROpcode.CMP_LT: "setl", IROpcode.CMP_LE: "setle",
-                IROpcode.CMP_GT: "setg", IROpcode.CMP_GE: "setge"
-            }
-            return f"mov eax, {left}\n    cmp eax, {right}\n    {setcc_map[opcode]} al\n    movzx eax, al\n    mov {dest}, eax"
-
         elif opcode == IROpcode.AND:
             dest = self._op(ops[0])
             src1 = self._op(ops[1])
@@ -436,18 +449,131 @@ class X86Generator:
         elif opcode == IROpcode.LOAD:
             dest = self._op(ops[0])
             src = self._op(ops[1])
-            if not src.startswith('['):
-                src = f"[{src}]"
+            if self._is_float_type(ops[0]):
+                return f"movss xmm0, {src}\n    movss {dest}, xmm0"
+            # Если src - это указатель (содержит адрес), загружаем значение
             return f"mov eax, {src}\n    mov {dest}, eax"
 
         elif opcode == IROpcode.STORE:
             addr = self._op(ops[0])
             src = self._op(ops[1])
-            if not addr.startswith('['):
-                addr = f"[{addr}]"
+            if self._is_float_type(ops[1]):
+                return f"movss xmm0, {src}\n    movss {addr}, xmm0"
             return f"mov eax, {src}\n    mov {addr}, eax"
 
         return f"; Unknown: {opcode.name}"
+
+    def _op_from_offset(self, offset: int) -> str:
+        """Возвращает строку операнда для смещения."""
+        if offset < 0:
+            return f"qword [rbp{offset}]"
+        return f"qword [rbp+{offset}]"
+
+    def _translate_float_comparison(self, opcode, dest, left, right):
+        """
+        Генерация сравнения для float чисел с использованием ucomiss.
+        Поддерживает обработку NaN (jp - jump if unordered).
+        """
+        counter = self.float_compare_counter
+        self.float_compare_counter += 1
+
+        if opcode == IROpcode.CMP_EQ:
+            return f"""; Float comparison EQ
+    movss xmm0, {left}
+    ucomiss xmm0, {right}
+    jp .unordered_{counter}
+    je .equal_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 0
+    jmp .end_{counter}
+.equal_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        elif opcode == IROpcode.CMP_NE:
+            return f"""; Float comparison NE
+    movss xmm0, {left}
+    ucomiss xmm0, {right}
+    jp .unordered_{counter}
+    jne .ne_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 1
+    jmp .end_{counter}
+.ne_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        elif opcode == IROpcode.CMP_LT:
+            return f"""; Float comparison LT
+    movss xmm0, {left}
+    ucomiss xmm0, {right}
+    jp .unordered_{counter}
+    jb .lt_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 0
+    jmp .end_{counter}
+.lt_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        elif opcode == IROpcode.CMP_LE:
+            return f"""; Float comparison LE
+    movss xmm0, {left}
+    ucomiss xmm0, {right}
+    jp .unordered_{counter}
+    jbe .le_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 0
+    jmp .end_{counter}
+.le_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        elif opcode == IROpcode.CMP_GT:
+            return f"""; Float comparison GT (swapped)
+    movss xmm0, {right}
+    ucomiss xmm0, {left}
+    jp .unordered_{counter}
+    jb .gt_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 0
+    jmp .end_{counter}
+.gt_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        elif opcode == IROpcode.CMP_GE:
+            return f"""; Float comparison GE (swapped)
+    movss xmm0, {right}
+    ucomiss xmm0, {left}
+    jp .unordered_{counter}
+    jbe .ge_{counter}
+    mov eax, 0
+    jmp .end_{counter}
+.unordered_{counter}:
+    mov eax, 0
+    jmp .end_{counter}
+.ge_{counter}:
+    mov eax, 1
+.end_{counter}:
+    mov {dest}, eax"""
+
+        return f"; Unknown float comparison: {opcode}"
 
     def _op(self, operand):
         if operand.operand_type == IROperandType.TEMPORARY:

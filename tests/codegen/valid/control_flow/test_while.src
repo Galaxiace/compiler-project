@@ -1,0 +1,14 @@
+// test_while.src
+// Тест цикла while
+
+fn main() -> int {
+    int sum = 0;
+    int i = 0;
+
+    while (i < 10) {
+        sum = sum + i;
+        i = i + 1;
+    }
+
+    return sum;  // Ожидается: 45 (сумма 0..9)
+}

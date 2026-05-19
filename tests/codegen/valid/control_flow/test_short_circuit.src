@@ -1,0 +1,17 @@
+// test_short_circuit.src
+// Тест short-circuit evaluation
+
+fn main() -> int {
+    int a = 0;
+    int b = 5;
+    int result = 0;
+
+    // b/a не вычисляется, потому что a == 0
+    if (a != 0 && b / a > 2) {
+        result = 1;
+    } else {
+        result = 0;
+    }
+
+    return result;  // Ожидается: 0
+}
