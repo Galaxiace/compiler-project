@@ -11,3 +11,38 @@ from .ir_writer import IRWriter
 from .dot_generator import IRDotGenerator
 from .json_generator import IRJsonGenerator
 from .validator import IRValidator
+from .optimizer import IROptimizer, ConstantFolder, ConstantPropagator, DeadCodeEliminator, UnreachableCodeEliminator
+
+__all__ = [
+    # IR instructions
+    'IROpcode',
+    'IROperandType',
+    'IROperand',
+    'IRInstruction',
+    'Temp',
+    'Var',
+    'Lit',
+    'Label',
+    'Mem',
+    'Global',
+    'LabelInst',
+    'PhiInst',
+    # Basic blocks
+    'BasicBlock',
+    # Control flow
+    'IRFunction',
+    'IRProgram',
+    # Generators
+    'IRGenerator',
+    'IRWriter',
+    'IRDotGenerator',
+    'IRJsonGenerator',
+    # Validator
+    'IRValidator',
+    # Optimizer
+    'IROptimizer',
+    'ConstantFolder',
+    'ConstantPropagator',
+    'DeadCodeEliminator',
+    'UnreachableCodeEliminator'
+]

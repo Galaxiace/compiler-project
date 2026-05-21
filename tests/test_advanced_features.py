@@ -331,7 +331,6 @@ def test_struct_with_float():
 
 # ============= ТЕСТЫ ВЫПОЛНЕНИЯ (интеграционные) =============
 
-@pytest.mark.slow
 def test_execute_array():
     """Реальное выполнение программы с массивом."""
     source = """
@@ -345,7 +344,6 @@ def test_execute_array():
     assert exit_code == 42
 
 
-@pytest.mark.slow
 def test_execute_struct():
     """Реальное выполнение программы со структурой."""
     source = """
@@ -364,7 +362,6 @@ def test_execute_struct():
     assert exit_code == 30
 
 
-@pytest.mark.slow
 def test_execute_float_compare():
     """Реальное выполнение программы с float сравнением."""
     source = """
@@ -381,7 +378,6 @@ def test_execute_float_compare():
     assert exit_code == 1
 
 
-@pytest.mark.slow
 def test_execute_array_loop():
     """Реальное выполнение: массив в цикле."""
     source = """

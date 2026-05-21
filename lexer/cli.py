@@ -209,6 +209,24 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
     generator.analyzer = analyzer
     ir_program = generator.generate_from_ast(ast)
 
+    # Применяем оптимизации, если запрошено
+    optimization_stats = None
+    if optimize:
+        try:
+            from ir.optimizer import IROptimizer
+            optimizer = IROptimizer(ir_program)
+            ir_program = optimizer.optimize()
+            optimization_stats = optimizer.get_stats()
+            if verbose:
+                print("Оптимизация IR выполнена", file=sys.stderr)
+                print(optimizer.print_stats(), file=sys.stderr)
+        except ImportError as e:
+            if verbose:
+                print(f"Оптимизатор не реализован: {e}", file=sys.stderr)
+        except Exception as e:
+            if verbose:
+                print(f"Ошибка при оптимизации: {e}", file=sys.stderr)
+
     if validate:
         from ir.validator import IRValidator
         validator = IRValidator()
@@ -221,17 +239,6 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
             print("Предупреждения IR:", file=sys.stderr)
             for warning in ir_warnings:
                 print(f"  WARNING: {warning}", file=sys.stderr)
-
-    if optimize:
-        try:
-            from ir.peephole_optimizer import PeepholeOptimizer
-            optimizer = PeepholeOptimizer(ir_program)
-            ir_program = optimizer.optimize()
-            if verbose:
-                print("Оптимизация IR выполнена", file=sys.stderr)
-        except ImportError:
-            if verbose:
-                print("Оптимизатор не реализован (stretch goal)", file=sys.stderr)
 
     if format_type == "dot":
         dot_gen = IRDotGenerator()
@@ -249,9 +256,23 @@ def run_ir(ast: ProgramNode, output_file: Optional[str] = None,
         writer = IRWriter()
         output = writer.write_program(ir_program)
 
-    if show_stats:
-        stats = generate_ir_stats(ir_program)
-        output = stats + "\n" + output
+    # Добавляем статистику оптимизации, если запрошено
+    if show_stats and optimization_stats:
+        stats_output = generate_ir_stats(ir_program)
+        stats_output += "\n" + "=" * 60 + "\n"
+        stats_output += "OPTIMIZATION STATISTICS\n"
+        stats_output += "=" * 60 + "\n"
+        stats_output += f"Constant folding: {optimization_stats.get('constant_folding', 0)} expressions folded\n"
+        stats_output += f"Constant propagation: {optimization_stats.get('constant_propagation', 0)} variables propagated\n"
+        stats_output += f"Dead code elimination: {optimization_stats.get('dead_code_removed', 0)} instructions removed\n"
+        stats_output += f"Unreachable blocks removed: {optimization_stats.get('unreachable_blocks_removed', 0)} blocks\n"
+        stats_output += f"Total instructions: {optimization_stats.get('total_instructions_before', 0)} → {optimization_stats.get('total_instructions_after', 0)}\n"
+        stats_output += f"Reduction: {optimization_stats.get('reduction_percent', 0)}%\n"
+        stats_output += "=" * 60 + "\n"
+        output = stats_output + "\n" + output
+    elif show_stats:
+        stats_output = generate_ir_stats(ir_program)
+        output = stats_output + "\n" + output
 
     if verbose:
         header = [

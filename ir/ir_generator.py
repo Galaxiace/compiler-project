@@ -19,7 +19,8 @@ from parser.ast import (
     ReturnStmtNode, ExprStmtNode, EmptyStmtNode,
     LiteralExprNode, IdentifierExprNode, BinaryExprNode,
     UnaryExprNode, CallExprNode, AssignmentExprNode, GroupingExprNode,
-    CastExprNode, ArrayAccessExprNode, StructFieldAccessExprNode
+    CastExprNode, ArrayAccessExprNode, StructFieldAccessExprNode,
+    ExpressionNode, StatementNode, DeclarationNode
 )
 
 from .control_flow import IRProgram, IRFunction
@@ -183,6 +184,63 @@ class IRGenerator:
                         self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), node)
                         self._emit_store(addr_temp, init_val, node)
 
+        elif node.type_name and node.type_name not in ('int', 'float', 'bool'):
+            # Проверяем, является ли тип структурой
+            struct_info = self.symbol_table.lookup(node.type_name)
+            if struct_info and struct_info.type and struct_info.type.is_struct:
+                # Это структура - выделяем память через ALLOCA
+                struct_type = struct_info.type
+                total_size = struct_type.size_bytes if struct_type.size_bytes else len(struct_type.fields) * 4
+
+                self.current_function.local_vars[node.name] = struct_type
+                struct_ptr = self.current_function.new_temp(f"struct_{node.name}", struct_type)
+
+                # Помечаем как указатель для кодогенератора (чтобы использовался qword)
+                ptr_type = Type(
+                    name=struct_type.name,
+                    is_array=True,  # сигнал использовать qword
+                    size_bytes=8
+                )
+                struct_ptr.ir_type = ptr_type
+                self.current_function.var_to_temp[node.name] = struct_ptr
+
+                # Выделяем память через ALLOCA
+                self._emit_alloca(struct_ptr, total_size, node)
+
+                # Обработка инициализатора для структур
+                if node.initializer:
+                    self._generate_expression_from_ast(node.initializer)
+                    init_val = self.last_value
+                    self._emit_struct_copy(struct_ptr, init_val, struct_type, node)
+                return
+
+        elif var_info and var_info.type and var_info.type.is_struct:
+            # Структура через var_info (запасной вариант)
+            struct_type = var_info.type
+            total_size = struct_type.size_bytes if struct_type.size_bytes else len(struct_type.fields) * 4
+
+            self.current_function.local_vars[node.name] = struct_type
+            struct_ptr = self.current_function.new_temp(f"struct_{node.name}", struct_type)
+
+            # Помечаем как указатель для кодогенератора (чтобы использовался qword)
+            ptr_type = Type(
+                name=struct_type.name,
+                is_array=True,  # сигнал использовать qword
+                size_bytes=8
+            )
+            struct_ptr.ir_type = ptr_type
+            self.current_function.var_to_temp[node.name] = struct_ptr
+
+            # Выделяем память через ALLOCA
+            self._emit_alloca(struct_ptr, total_size, node)
+
+            # Обработка инициализатора для структур
+            if node.initializer:
+                self._generate_expression_from_ast(node.initializer)
+                init_val = self.last_value
+                self._emit_struct_copy(struct_ptr, init_val, struct_type, node)
+            return
+
         else:
             # Обычная переменная
             var_type = var_info.type if var_info else None
@@ -209,6 +267,33 @@ class IRGenerator:
             else:
                 zero = Lit(0, var_type)
                 self._emit(IRInstruction(IROpcode.MOVE, [var_temp, zero]), node)
+
+    def _emit_struct_copy(self, dest_ptr: IROperand, src_ptr: IROperand, struct_type: Type, node=None):
+        """Генерирует побайтовое копирование структуры из src_ptr в dest_ptr."""
+        total_size = struct_type.size_bytes if struct_type.size_bytes else len(struct_type.fields) * 4
+
+        # Копируем по 4 байта (размер int/float)
+        for offset in range(0, total_size, 4):
+            # Вычисляем адрес поля в источнике
+            src_addr = self.current_function.new_temp(f"copy_src_{offset}", Type('ptr'))
+            if offset > 0:
+                self._emit(IRInstruction(IROpcode.ADD, [src_addr, src_ptr, Lit(offset)]), node)
+            else:
+                self._emit(IRInstruction(IROpcode.MOVE, [src_addr, src_ptr]), node)
+
+            # Загружаем значение из источника
+            temp_val = self.current_function.new_temp(f"copy_val_{offset}", Type('int'))
+            self._emit_load(temp_val, src_addr, node)
+
+            # Вычисляем адрес поля в назначении
+            dst_addr = self.current_function.new_temp(f"copy_dst_{offset}", Type('ptr'))
+            if offset > 0:
+                self._emit(IRInstruction(IROpcode.ADD, [dst_addr, dest_ptr, Lit(offset)]), node)
+            else:
+                self._emit(IRInstruction(IROpcode.MOVE, [dst_addr, dest_ptr]), node)
+
+            # Сохраняем значение в назначение
+            self._emit_store(dst_addr, temp_val, node)
 
     def _new_label(self, base: str) -> str:
         self.label_counter += 1
@@ -344,7 +429,8 @@ class IRGenerator:
     def _generate_return_from_ast(self, node: ReturnStmtNode):
         if node.value:
             self._generate_expression_from_ast(node.value)
-            self._emit_return(self.last_value, node)
+            ret_val = self.last_value
+            self._emit_return(ret_val, node)
         else:
             self._emit_return(None, node)
 
@@ -495,10 +581,16 @@ class IRGenerator:
         self._generate_expression_from_ast(node.array)
         array_ptr = self.last_value
 
+        # Убираем лишнюю загрузку для массивов
+        # array_ptr уже содержит правильный указатель из var_to_temp
+
         self._generate_expression_from_ast(node.index)
         index = self.last_value
 
         element_size = 4
+        if hasattr(node, 'element_type'):
+            if node.element_type and node.element_type.name == 'float':
+                element_size = 4
 
         offset_temp = self.current_function.new_temp("offset", Type('int'))
         self._emit(IRInstruction(IROpcode.MUL, [offset_temp, index, Lit(element_size)]), node)
@@ -520,9 +612,10 @@ class IRGenerator:
 
         field_offset = 0
         if isinstance(node.struct, IdentifierExprNode):
-            struct_info = self.symbol_table.lookup(node.struct.name)
-            if struct_info and struct_info.type and struct_info.type.is_struct:
-                field_names = list(struct_info.type.fields.keys())
+            # Получаем тип структуры из local_vars функции
+            struct_type = self.current_function.local_vars.get(node.struct.name)
+            if struct_type and struct_type.is_struct and hasattr(struct_type, 'fields'):
+                field_names = list(struct_type.fields.keys())
                 if node.field_name in field_names:
                     field_offset = field_names.index(node.field_name) * 4
 
@@ -546,67 +639,42 @@ class IRGenerator:
         for i, arg in enumerate(args):
             self._emit_param(i, arg, expr)
 
-        expr_type = self._get_type_from_symbol_table(expr)
-        result = self.current_function.new_temp("call", expr_type)
-
         callee_name = expr.callee.name if hasattr(expr.callee, 'name') else "unknown"
-        self._emit_call(result, callee_name, len(args), expr)
-        self.last_value = result
+
+        # Определяем тип возвращаемого значения
+        func_info = self.symbol_table.lookup(callee_name)
+        return_type = None
+        if func_info:
+            return_type = func_info.return_type_node
+
+        if return_type and return_type.is_struct:
+            # Для функций, возвращающих структуру, результат - это указатель
+            # Выделяем память под результат
+            total_size = return_type.size_bytes if return_type.size_bytes else len(return_type.fields) * 4
+            result_ptr = self.current_function.new_temp("call_struct", return_type)
+            ptr_type = Type(name=return_type.name, is_array=True, size_bytes=8)
+            result_ptr.ir_type = ptr_type
+            self._emit_alloca(result_ptr, total_size, expr)
+
+            # Вызываем функцию - результат будет скопирован в result_ptr
+            self._emit_call(result_ptr, callee_name, len(args), expr)
+            self.last_value = result_ptr
+        else:
+            # Обычный вызов функции, возвращающей простой тип
+            expr_type = self._get_type_from_symbol_table(expr)
+            result = self.current_function.new_temp("call", expr_type)
+            self._emit_call(result, callee_name, len(args), expr)
+            self.last_value = result
 
     def _generate_assignment_from_ast(self, expr: AssignmentExprNode):
         # Присваивание в элемент массива: arr[index] = value
         if isinstance(expr.target, ArrayAccessExprNode):
-            # Вычисляем адрес массива
-            self._generate_expression_from_ast(expr.target.array)
-            array_ptr = self.last_value
-
-            # Вычисляем индекс
-            self._generate_expression_from_ast(expr.target.index)
-            index = self.last_value
-
-            element_size = 4
-            offset_temp = self.current_function.new_temp("offset", Type('int'))
-            self._emit(IRInstruction(IROpcode.MUL, [offset_temp, index, Lit(element_size)]), expr)
-
-            addr_temp = self.current_function.new_temp("addr", Type('ptr'))
-            self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), expr)
-
-            # Вычисляем значение
-            self._generate_expression_from_ast(expr.value)
-            val = self.last_value
-
-            # Сохраняем значение
-            self._emit_store(addr_temp, val, expr)
-            self.last_value = val
+            self._generate_array_assignment(expr.target, expr.value)
             return
 
         # Присваивание в поле структуры: struct.field = value
         elif isinstance(expr.target, StructFieldAccessExprNode):
-            self._generate_expression_from_ast(expr.target.struct)
-            struct_ptr = self.last_value
-
-            # Вычисляем смещение поля
-            field_offset = 0
-            if isinstance(expr.target.struct, IdentifierExprNode):
-                struct_info = self.symbol_table.lookup(expr.target.struct.name)
-                if struct_info and struct_info.type and struct_info.type.is_struct:
-                    field_names = list(struct_info.type.fields.keys())
-                    if expr.target.field_name in field_names:
-                        field_offset = field_names.index(expr.target.field_name) * 4
-
-            addr_temp = self.current_function.new_temp("field_addr", Type('ptr'))
-            if field_offset > 0:
-                self._emit(IRInstruction(IROpcode.ADD, [addr_temp, struct_ptr, Lit(field_offset)]), expr)
-            else:
-                self._emit(IRInstruction(IROpcode.MOVE, [addr_temp, struct_ptr]), expr)
-
-            # Вычисляем значение
-            self._generate_expression_from_ast(expr.value)
-            val = self.last_value
-
-            # Сохраняем значение
-            self._emit_store(addr_temp, val, expr)
-            self.last_value = val
+            self._generate_struct_assignment(expr.target, expr.value)
             return
 
         # Составные операторы присваивания (+=, -=, etc)
@@ -651,6 +719,55 @@ class IRGenerator:
                     self._emit_store(global_var, val, expr)
                     self.last_value = val
 
+    def _generate_array_assignment(self, target: ArrayAccessExprNode, value: ExpressionNode):
+        """Генерация присваивания в элемент массива."""
+        self._generate_expression_from_ast(target.array)
+        array_ptr = self.last_value
+
+        # Убираем лишнюю загрузку
+        # array_ptr уже содержит правильный указатель
+
+        self._generate_expression_from_ast(target.index)
+        index = self.last_value
+
+        element_size = 4
+        offset_temp = self.current_function.new_temp("offset", Type('int'))
+        self._emit(IRInstruction(IROpcode.MUL, [offset_temp, index, Lit(element_size)]), target)
+
+        addr_temp = self.current_function.new_temp("addr", Type('ptr'))
+        self._emit(IRInstruction(IROpcode.ADD, [addr_temp, array_ptr, offset_temp]), target)
+
+        self._generate_expression_from_ast(value)
+        val = self.last_value
+
+        self._emit_store(addr_temp, val, target)
+        self.last_value = val
+
+    def _generate_struct_assignment(self, target: StructFieldAccessExprNode, value: ExpressionNode):
+        """Генерация присваивания в поле структуры."""
+        self._generate_expression_from_ast(target.struct)
+        struct_ptr = self.last_value
+
+        field_offset = 0
+        if isinstance(target.struct, IdentifierExprNode):
+            struct_type = self.current_function.local_vars.get(target.struct.name)
+            if struct_type and struct_type.is_struct and hasattr(struct_type, 'fields'):
+                field_names = list(struct_type.fields.keys())
+                if target.field_name in field_names:
+                    field_offset = field_names.index(target.field_name) * 4
+
+        addr_temp = self.current_function.new_temp("field_addr", Type('ptr'))
+        if field_offset > 0:
+            self._emit(IRInstruction(IROpcode.ADD, [addr_temp, struct_ptr, Lit(field_offset)]), target)
+        else:
+            self._emit(IRInstruction(IROpcode.MOVE, [addr_temp, struct_ptr]), target)
+
+        self._generate_expression_from_ast(value)
+        val = self.last_value
+
+        self._emit_store(addr_temp, val, target)
+        self.last_value = val
+
     def _get_type_from_symbol_table(self, expr) -> Optional[Type]:
         if isinstance(expr, IdentifierExprNode):
             info = self.symbol_table.lookup(expr.name)
@@ -665,7 +782,30 @@ class IRGenerator:
                 return Type('float', size_bytes=4, alignment=4)
             elif isinstance(expr.value, str):
                 return Type('string', size_bytes=8, alignment=8)
+        elif isinstance(expr, ArrayAccessExprNode):
+            # Возвращаем тип элемента массива
+            if hasattr(expr, 'element_type') and expr.element_type:
+                return expr.element_type
+            return Type('int', size_bytes=4, alignment=4)
         return Type('int', size_bytes=4, alignment=4)
+
+    def _op(self, operand: IROperand) -> str:
+        """Форматирует операнд для вывода в IR."""
+        if operand.operand_type == IROperandType.TEMPORARY:
+            return f"%{operand.value}"
+        elif operand.operand_type == IROperandType.VARIABLE:
+            return f"@{operand.value}"
+        elif operand.operand_type == IROperandType.LITERAL:
+            if isinstance(operand.value, bool):
+                return "true" if operand.value else "false"
+            elif isinstance(operand.value, str):
+                return f'"{operand.value}"'
+            return str(operand.value)
+        elif operand.operand_type == IROperandType.LABEL:
+            return operand.value
+        elif operand.operand_type == IROperandType.GLOBAL:
+            return f"@{operand.value}"
+        return str(operand.value)
 
     # ============= Методы эмиссии инструкций =============
 

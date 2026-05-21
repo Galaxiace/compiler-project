@@ -1,0 +1,41 @@
+fn swap(int arr[], int i, int j) -> void {
+    int temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}
+
+fn partition(int arr[], int low, int high) -> int {
+    int pivot = arr[high];
+    int i = low - 1;
+    int j = low;
+    while (j < high) {
+        if (arr[j] < pivot) {
+            i = i + 1;
+            swap(arr, i, j);
+        }
+        j = j + 1;
+    }
+    swap(arr, i + 1, high);
+    return i + 1;
+}
+
+fn quicksort(int arr[], int low, int high) -> void {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quicksort(arr, low, pi - 1);
+        quicksort(arr, pi + 1, high);
+    }
+}
+
+fn main() -> int {
+    int arr[5];
+    arr[0] = 42;
+    arr[1] = 23;
+    arr[2] = 17;
+    arr[3] = 8;
+    arr[4] = 4;
+    
+    quicksort(arr, 0, 4);
+    
+    return arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+}

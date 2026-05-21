@@ -80,10 +80,14 @@ class SemanticAnalyzer(Visitor):
         param_types = []
         for param in node.parameters:
             param_type = self._get_type_from_name(param.type_name)
+            if not param_type:
+                param_type = self._lookup_struct_type(param.type_name)
             if param_type:
                 param_types.append(param_type)
 
         return_type = self._get_type_from_name(node.return_type)
+        if not return_type:
+            return_type = self._lookup_struct_type(node.return_type)
         if not return_type:
             return_type = self.builtin_types['void']
 
@@ -489,6 +493,8 @@ class SemanticAnalyzer(Visitor):
 
     def _analyze_array_access(self, node: ArrayAccessExprNode) -> Optional[Type]:
         """Анализирует доступ к элементу массива."""
+        array_info = None
+
         if isinstance(node.array, IdentifierExprNode):
             array_info = self.symbol_table.lookup(node.array.name)
             if not array_info:
@@ -502,6 +508,12 @@ class SemanticAnalyzer(Visitor):
                     f"'{node.array.name}' is not an array", node.array.line, node.array.column
                 ))
                 return None
+        elif isinstance(node.array, ArrayAccessExprNode):
+            # Для многомерных массивов: matrix[1][2]
+            # Рекурсивно анализируем
+            inner_type = self._analyze_array_access(node.array)
+            if inner_type and inner_type.is_array:
+                array_info = type('obj', (object,), {'type': inner_type})()
 
         index_type = self._analyze_expression(node.index)
         if index_type and index_type.name != 'int':
@@ -510,7 +522,7 @@ class SemanticAnalyzer(Visitor):
                 "array index"
             ))
 
-        if array_info and array_info.type and array_info.type.element_type:
+        if array_info and array_info.type and hasattr(array_info.type, 'element_type') and array_info.type.element_type:
             return array_info.type.element_type
         return self.builtin_types['int']
 

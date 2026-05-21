@@ -47,6 +47,7 @@ compiler-project/
 │   ├── ir_generator.py                           # IRGenerator (из AST)
 │   ├── ir_writer.py                              # Текстовый вывод
 │   ├── dot_generator.py                          # DOT для Graphviz
+│   ├── optimizer.py
 │   ├── json_generator.py                         # JSON вывод
 │   └── validator.py                              # Валидатор IR
 │
@@ -64,10 +65,13 @@ compiler-project/
 │   ├── init.py
 │   ├── test_lexer.py                             # Модульные тесты
 │   ├── test_parser.py                            # Тесты парсера
+│   ├── test_advanced_features.py
+│   ├── test_control_flow.py
 │   ├── test_file_comparison.py                   # Сравнение с эталонами
 │   ├── test_ir.py                                # Тесты IR
 │   ├── test_runner.py                            # Запуск тестов
 │   ├── test_semantic.py                          # Тесты семантики
+│   ├── test_arrays.py
 │   │
 │   ├── codegen/                                  # Тесты кодогенерации
 │   │   ├── valid/                                # Валидные тестовые примеры
@@ -90,6 +94,7 @@ compiler-project/
 │   └── test_short.src
 │
 │
+├── build_demo.sh
 ├── requirements.txt                              # Зависимости проекта
 ├── setup.py                                      # Установочный файл
 └── README.md                                     # Этот файл
@@ -232,6 +237,25 @@ ld -o test_short runtime.o test_short.o
 # Проверка результата
 echo $?
 # Ожидаемый вывод: 52 (42 + 10)
+```
+
+#### Демо
+
+```bash
+
+python -m lexer.cli --input examples/demo_fibonacci.src --mode compile --output /tmp/demo.asm --optimize
+nasm -f elf64 -o /tmp/demo.o /tmp/demo.asm
+nasm -f elf64 -o /tmp/runtime.o runtime/runtime.asm
+ld -o /tmp/demo_program /tmp/runtime.o /tmp/demo.o
+/tmp/demo_program
+echo "Fibonacci(10) = $?"
+```
+
+#### Проверка оптимизаций
+
+```bash
+
+python -m lexer.cli --input examples/demo_fibonacci.src --mode ir --optimize --stats 2>&1 | head -30
 ```
 
 ---
