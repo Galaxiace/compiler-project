@@ -28,6 +28,11 @@ class TypeCompatibility:
         if lhs.is_array and rhs.is_array:
             return cls.is_compatible(lhs.element_type, rhs.element_type)
 
+        # Передача массива в параметр-массив (указатель)
+        # lhs - параметр функции (array), rhs - аргумент (array)
+        if lhs.is_array and rhs.is_array:
+            return True
+
         # Для структур
         if lhs.is_struct and rhs.is_struct:
             return lhs.name == rhs.name

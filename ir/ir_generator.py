@@ -80,7 +80,11 @@ class IRGenerator:
 
         for i, param in enumerate(node.parameters):
             param_info = self.symbol_table.lookup(param.name)
-            if param.type_name == 'int':
+
+            # Проверяем, является ли параметр массивом
+            if hasattr(param, 'is_array') and param.is_array:
+                param_type = Type('ptr', is_array=True, size_bytes=8, alignment=8)
+            elif param.type_name == 'int':
                 param_type = Type('int', size_bytes=4, alignment=4)
             elif param.type_name == 'float':
                 param_type = Type('float', size_bytes=4, alignment=4)

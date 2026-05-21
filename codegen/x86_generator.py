@@ -169,7 +169,9 @@ class X86Generator:
         self.pending_params = []
         self.float_compare_counter = 0
 
-        for block in func.blocks:
+        # Выводим блоки в правильном порядке: entry, потом в порядке следования в IR
+        blocks_in_order = self._order_blocks(func)
+        for block in blocks_in_order:
             for instr in block.instructions:
                 if instr.opcode == IROpcode.MOVE and len(instr.operands) >= 2:
                     dest = instr.operands[0]
@@ -312,6 +314,47 @@ class X86Generator:
         self._emit("ret")
         self.output.append("")
 
+    def _order_blocks(self, func):
+        """Упорядочивает блоки для корректного вывода: entry первым, затем по связям."""
+        blocks = list(func.blocks)
+        if not blocks:
+            return blocks
+
+        # Начинаем с entry блока
+        ordered = []
+        visited = set()
+
+        # Находим entry блок
+        entry = func.entry_block if hasattr(func, 'entry_block') else blocks[0]
+
+        def dfs(block):
+            if block.label in visited:
+                return
+            visited.add(block.label)
+            ordered.append(block)
+
+            # Ищем, куда ведут переходы из этого блока
+            for instr in block.instructions:
+                if instr.opcode in (IROpcode.JUMP, IROpcode.JUMP_IF, IROpcode.JUMP_IF_NOT):
+                    for op in instr.operands:
+                        if op.operand_type == IROperandType.LABEL:
+                            target_label = op.value
+                            # Ищем блок с такой меткой
+                            for b in blocks:
+                                if b.label == target_label and b.label not in visited:
+                                    dfs(b)
+                                    break
+
+        dfs(entry)
+
+        # Добавляем оставшиеся блоки (если есть недостижимые)
+        for block in blocks:
+            if block.label not in visited:
+                ordered.append(block)
+
+        return ordered
+
+
     def _translate_alloca(self, instr, func):
         """ALLOCA для массивов."""
         ops = instr.operands
@@ -329,7 +372,8 @@ class X86Generator:
             self._emit(f"mov qword [rbp{offset}], rsp")
 
     def _save_parameters(self, func):
-        int_regs = ['edi', 'esi', 'edx', 'ecx', 'r8d', 'r9d']
+        int_regs_64 = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+        int_regs_32 = ['edi', 'esi', 'edx', 'ecx', 'r8d', 'r9d']
         float_regs = ['xmm0', 'xmm1', 'xmm2', 'xmm3', 'xmm4', 'xmm5', 'xmm6', 'xmm7']
         int_idx = 0
         float_idx = 0
@@ -341,12 +385,16 @@ class X86Generator:
                 continue
 
             is_float = self._is_float_type(param)
+            is_ptr = self._is_ptr_type(param)
 
             if is_float and float_idx < len(float_regs):
                 self._emit(f"movss dword [rbp{offset}], {float_regs[float_idx]}")
                 float_idx += 1
-            elif not is_float and int_idx < len(int_regs):
-                self._emit(f"mov dword [rbp{offset}], {int_regs[int_idx]}")
+            elif is_ptr and int_idx < len(int_regs_64):
+                self._emit(f"mov qword [rbp{offset}], {int_regs_64[int_idx]}")
+                int_idx += 1
+            elif not is_float and int_idx < len(int_regs_32):
+                self._emit(f"mov dword [rbp{offset}], {int_regs_32[int_idx]}")
                 int_idx += 1
 
     def _translate_instruction(self, instr, func):
@@ -401,10 +449,15 @@ class X86Generator:
             if isinstance(idx, int):
                 val = self._op(ops[1])
                 is_float_param = self._is_float_type(ops[1]) or self._is_float_op_str(val)
+                is_ptr_param = self._is_ptr_type(ops[1])
                 if is_float_param:
                     float_regs = ['xmm0', 'xmm1', 'xmm2', 'xmm3', 'xmm4', 'xmm5', 'xmm6', 'xmm7']
                     if idx < len(float_regs):
                         return f"movss {float_regs[idx]}, {val}"
+                elif is_ptr_param:
+                    int_regs = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+                    if idx < len(int_regs):
+                        return f"mov {int_regs[idx]}, {val}"
                 else:
                     int_regs = ['edi', 'esi', 'edx', 'ecx', 'r8d', 'r9d']
                     if idx < len(int_regs):
@@ -500,12 +553,17 @@ class X86Generator:
                     return f"divss {dest}, {right}"
                 return f"movss xmm0, {left}\n    divss xmm0, {right}\n    movss {dest}, xmm0"
             else:
+                if ops[2].operand_type == IROperandType.LITERAL:
+                    return f"mov eax, dword {left}\n    cdq\n    mov ecx, {right}\n    idiv ecx\n    mov dword {dest}, eax"
                 return f"mov eax, dword {left}\n    cdq\n    idiv dword {right}\n    mov dword {dest}, eax"
 
         elif opcode == IROpcode.MOD:
             dest = self._op(ops[0])
             left = self._op(ops[1])
             right = self._op(ops[2])
+            # Если right - литерал, загружаем в регистр
+            if ops[2].operand_type == IROperandType.LITERAL:
+                return f"mov eax, dword {left}\n    cdq\n    mov ecx, {right}\n    idiv ecx\n    mov dword {dest}, edx"
             return f"mov eax, dword {left}\n    cdq\n    idiv dword {right}\n    mov dword {dest}, edx"
 
         elif opcode == IROpcode.NEG:

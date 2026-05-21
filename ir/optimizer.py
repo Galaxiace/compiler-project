@@ -35,7 +35,6 @@ class ConstantFolder:
         new_instructions = []
 
         for instr in block.instructions:
-            # Пропускаем PHI и LABEL инструкции
             if isinstance(instr, (PhiInst, LabelInst)):
                 new_instructions.append(instr)
                 continue
@@ -46,32 +45,27 @@ class ConstantFolder:
         block.instructions = new_instructions
 
     def _try_fold_instruction(self, instr: IRInstruction) -> IRInstruction:
-        """Пытается свернуть инструкцию, если все операнды - константы."""
-        # Проверяем, все ли операнды - литералы
+        """Пытается свернуть инструкцию, если все операнды-источники - константы."""
+        source_operands = instr.operands[1:] if len(instr.operands) > 1 else instr.operands
         all_literals = all(
             op.operand_type == IROperandType.LITERAL
-            for op in instr.operands
+            for op in source_operands
         )
 
         if not all_literals:
             return instr
 
-        # Для разных типов инструкций выполняем свертку
         if instr.opcode in (IROpcode.ADD, IROpcode.SUB, IROpcode.MUL,
                             IROpcode.DIV, IROpcode.MOD):
             return self._fold_arithmetic(instr)
-
         elif instr.opcode in (IROpcode.AND, IROpcode.OR, IROpcode.XOR):
             return self._fold_bitwise(instr)
-
         elif instr.opcode in (IROpcode.CMP_EQ, IROpcode.CMP_NE,
                               IROpcode.CMP_LT, IROpcode.CMP_LE,
                               IROpcode.CMP_GT, IROpcode.CMP_GE):
             return self._fold_comparison(instr)
-
         elif instr.opcode == IROpcode.NOT:
             return self._fold_not(instr)
-
         elif instr.opcode == IROpcode.NEG:
             return self._fold_neg(instr)
 
@@ -107,12 +101,10 @@ class ConstantFolder:
             else:
                 return instr
 
-            # Создаем новую инструкцию MOVE с константой
             lit_type = left.ir_type if left.ir_type else right.ir_type
             lit = Lit(result, lit_type)
             self.stats["folded"] += 1
             return IRInstruction(IROpcode.MOVE, [dest, lit])
-
         except Exception:
             return instr
 
@@ -239,22 +231,45 @@ class ConstantPropagator:
         new_instructions = []
 
         for instr in block.instructions:
-            # Пытаемся заменить операнды на известные константы
+            if isinstance(instr, (PhiInst, LabelInst)):
+                new_instructions.append(instr)
+                continue
+
             propagated = self._propagate_instruction(instr)
             if propagated != instr:
                 changed = True
 
-            # Если это MOVE с константой, запоминаем
-            if instr.opcode == IROpcode.MOVE and len(instr.operands) >= 2:
-                dest = instr.operands[0]
-                src = instr.operands[1]
+            if propagated.opcode == IROpcode.MOVE and len(propagated.operands) >= 2:
+                dest = propagated.operands[0]
+                src = propagated.operands[1]
+                if dest.operand_type == IROperandType.TEMPORARY and \
+                        src.operand_type == IROperandType.LITERAL:
+                    if dest.value in self.constants and self.constants[dest.value] == src.value:
+                        continue
+                if dest.operand_type == IROperandType.TEMPORARY and \
+                        src.operand_type == IROperandType.TEMPORARY and \
+                        src.value in self.constants and \
+                        dest.value not in self.constants:
+                    const_val = self.constants[src.value]
+                    lit = Lit(const_val, dest.ir_type)
+                    propagated = IRInstruction(IROpcode.MOVE, [dest, lit])
+                    changed = True
+
+            new_instructions.append(propagated)
+
+            if propagated.opcode == IROpcode.MOVE and len(propagated.operands) >= 2:
+                dest = propagated.operands[0]
+                src = propagated.operands[1]
 
                 if dest.operand_type == IROperandType.TEMPORARY and \
                         src.operand_type == IROperandType.LITERAL:
                     self.constants[dest.value] = src.value
                     self.stats["propagated"] += 1
-
-            new_instructions.append(propagated)
+                elif dest.operand_type == IROperandType.TEMPORARY and \
+                        src.operand_type == IROperandType.TEMPORARY and \
+                        src.value in self.constants:
+                    self.constants[dest.value] = self.constants[src.value]
+                    self.stats["propagated"] += 1
 
         block.instructions = new_instructions
         return changed
@@ -264,9 +279,12 @@ class ConstantPropagator:
         new_operands = []
         changed = False
 
-        for op in instr.operands:
+        for i, op in enumerate(instr.operands):
+            # НЕ заменяем первый операнд (dest) для MOVE
+            if i == 0 and instr.opcode == IROpcode.MOVE:
+                new_operands.append(op)
+                continue
             if op.operand_type == IROperandType.TEMPORARY and op.value in self.constants:
-                # Заменяем на константу
                 const_val = self.constants[op.value]
                 lit = Lit(const_val, op.ir_type)
                 new_operands.append(lit)
@@ -292,50 +310,53 @@ class DeadCodeEliminator:
         return program
 
     def _eliminate_function(self, func: IRFunction):
-        """Удаляет мертвый код из функции."""
-        for block in func.blocks:
-            self._eliminate_block(block)
+        """Удаляет мертвый код из функции (глобальный анализ)."""
+        changed = True
+        while changed:
+            changed = False
 
-    def _eliminate_block(self, block: BasicBlock):
-        """Удаляет мертвый код из блока."""
-        used_temps: Set[str] = set()
+            used_temps: Set[str] = set()
+            for block in func.blocks:
+                for instr in block.instructions:
+                    for i, op in enumerate(instr.operands):
+                        if op.operand_type == IROperandType.TEMPORARY:
+                            if i == 0 and instr.opcode == IROpcode.MOVE:
+                                continue
+                            used_temps.add(op.value)
 
-        # Сначала собираем все используемые временные
-        for instr in block.instructions:
-            for op in instr.operands:
-                if op.operand_type == IROperandType.TEMPORARY:
-                    used_temps.add(op.value)
+            for block in func.blocks:
+                new_instructions = []
+                for instr in block.instructions:
+                    if instr.opcode in (IROpcode.STORE, IROpcode.CALL, IROpcode.RETURN,
+                                        IROpcode.JUMP, IROpcode.JUMP_IF, IROpcode.JUMP_IF_NOT,
+                                        IROpcode.PARAM):
+                        new_instructions.append(instr)
+                        continue
 
-        # Удаляем инструкции, результат которых не используется
-        new_instructions = []
+                    if isinstance(instr, (PhiInst, LabelInst)):
+                        new_instructions.append(instr)
+                        continue
 
-        for instr in block.instructions:
-            # Всегда оставляем терминаторы и инструкции с побочными эффектами
-            if instr.opcode in (IROpcode.STORE, IROpcode.CALL, IROpcode.RETURN,
-                                IROpcode.JUMP, IROpcode.JUMP_IF, IROpcode.JUMP_IF_NOT):
-                new_instructions.append(instr)
-                continue
+                    if len(instr.operands) > 0 and instr.operands[0].operand_type == IROperandType.TEMPORARY:
+                        dest = instr.operands[0].value
+                        if dest in used_temps:
+                            new_instructions.append(instr)
+                        else:
+                            self.stats["removed"] += 1
+                            changed = True
+                    else:
+                        new_instructions.append(instr)
 
-            # PHI и LABEL инструкции всегда оставляем
-            if isinstance(instr, (PhiInst, LabelInst)):
-                new_instructions.append(instr)
-                continue
+                final = []
+                for instr in new_instructions:
+                    final.append(instr)
+                    if instr.opcode in (IROpcode.JUMP, IROpcode.RETURN):
+                        break
+                if len(final) < len(new_instructions):
+                    self.stats["removed"] += len(new_instructions) - len(final)
+                    changed = True
 
-            # Проверяем, используется ли результат
-            if len(instr.operands) > 0 and instr.operands[0].operand_type == IROperandType.TEMPORARY:
-                dest = instr.operands[0].value
-                if dest in used_temps:
-                    new_instructions.append(instr)
-                else:
-                    self.stats["removed"] += 1
-            else:
-                new_instructions.append(instr)
-
-        block.instructions = new_instructions
-
-    def _is_side_effect_free(self, instr: IRInstruction) -> bool:
-        """Проверяет, есть ли у инструкции побочные эффекты."""
-        return instr.opcode not in (IROpcode.STORE, IROpcode.CALL, IROpcode.RETURN)
+                block.instructions = final
 
 
 class UnreachableCodeEliminator:
@@ -355,7 +376,6 @@ class UnreachableCodeEliminator:
         if not func.entry_block:
             return
 
-        # Находим достижимые блоки
         reachable = set()
         worklist = [func.entry_block]
 
@@ -366,13 +386,54 @@ class UnreachableCodeEliminator:
             reachable.add(block)
             worklist.extend(block.successors)
 
-        # Удаляем недостижимые блоки
         new_blocks = [b for b in func.blocks if b in reachable]
-
         removed_count = len(func.blocks) - len(new_blocks)
         self.stats["blocks_removed"] += removed_count
-
         func.blocks = new_blocks
+
+
+class JumpOptimizer:
+    """Оптимизация переходов: JUMP_IF true → JUMP, удаление недостижимых переходов."""
+
+    def __init__(self):
+        self.stats = {"jumps_optimized": 0}
+
+    def optimize(self, program: IRProgram) -> IRProgram:
+        for func in program.functions:
+            self._optimize_function(func)
+        return program
+
+    def _optimize_function(self, func: IRFunction):
+        for block in func.blocks:
+            self._optimize_block(block)
+
+    def _optimize_block(self, block: BasicBlock):
+        new_instructions = []
+        for instr in block.instructions:
+            if instr.opcode == IROpcode.JUMP_IF and len(instr.operands) >= 2:
+                cond = instr.operands[0]
+                if cond.operand_type == IROperandType.LITERAL:
+                    if cond.value:
+                        label = instr.operands[1]
+                        new_instructions.append(IRInstruction(IROpcode.JUMP, [label]))
+                        self.stats["jumps_optimized"] += 1
+                        continue
+                    else:
+                        self.stats["jumps_optimized"] += 1
+                        continue
+            elif instr.opcode == IROpcode.JUMP_IF_NOT and len(instr.operands) >= 2:
+                cond = instr.operands[0]
+                if cond.operand_type == IROperandType.LITERAL:
+                    if not cond.value:
+                        label = instr.operands[1]
+                        new_instructions.append(IRInstruction(IROpcode.JUMP, [label]))
+                        self.stats["jumps_optimized"] += 1
+                        continue
+                    else:
+                        self.stats["jumps_optimized"] += 1
+                        continue
+            new_instructions.append(instr)
+        block.instructions = new_instructions
 
 
 class IROptimizer:
@@ -394,28 +455,24 @@ class IROptimizer:
             "total_instructions_after": 0
         }
 
-    def optimize(self, max_passes: int = 3) -> IRProgram:
+    def optimize(self, max_passes: int = 5) -> IRProgram:
         """Выполняет полную оптимизацию IR."""
-        # Подсчет инструкций до оптимизации
         self.stats["total_instructions_before"] = self._count_instructions()
 
+        jump_opt = JumpOptimizer()
+
         for _ in range(max_passes):
-            # Константная свертка
             self.program = self.folder.fold(self.program)
-
-            # Распространение констант
             self.program = self.propagator.propagate(self.program)
-
-            # Еще раз свертка после распространения
+            self.program = self.folder.fold(self.program)
+            self.program = self.propagator.propagate(self.program)
             self.program = self.folder.fold(self.program)
 
-            # Удаление мертвого кода
+            self.program = jump_opt.optimize(self.program)
+            self.program = self.dce.eliminate(self.program)
+            self.program = self.uce.eliminate(self.program)
             self.program = self.dce.eliminate(self.program)
 
-            # Удаление недостижимых блоков
-            self.program = self.uce.eliminate(self.program)
-
-        # Сбор статистики
         self.stats["total_instructions_after"] = self._count_instructions()
         self.stats["constant_folding"] = self.folder.stats["folded"]
         self.stats["constant_propagation"] = self.propagator.stats["propagated"]

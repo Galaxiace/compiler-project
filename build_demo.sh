@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 DEMO_FILE="$PROJECT_DIR/examples/quicksort.src"
@@ -13,13 +11,12 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${BLUE}==========================================${NC}"
-echo -e "${BLUE}  MiniCompiler Demo - Array Sum${NC}"
+echo -e "${BLUE}  MiniCompiler Demo - Quicksort${NC}"
 echo -e "${BLUE}==========================================${NC}"
 echo ""
 
 echo -e "${YELLOW}[1/3] Компиляция...${NC}"
-python -m lexer.cli --input "$DEMO_FILE" --mode compile --output /tmp/demo.asm
-
+python -m lexer.cli --input "$DEMO_FILE" --mode compile --output /tmp/demo.asm 2>&1 | tail -1
 if [ $? -ne 0 ]; then
     echo -e "${RED}Ошибка компиляции!${NC}"
     exit 1
@@ -32,7 +29,6 @@ if [ $? -ne 0 ]; then
     echo -e "${RED}Ошибка ассемблирования!${NC}"
     exit 1
 fi
-
 nasm -f elf64 -o /tmp/runtime.o "$PROJECT_DIR/runtime/runtime.asm" 2>/dev/null
 echo -e "${GREEN}✓ Ассемблирование успешно${NC}"
 
@@ -50,7 +46,14 @@ EXIT_CODE=$?
 
 echo ""
 echo -e "${BLUE}==========================================${NC}"
-echo -e "Sum of array elements (exit code): ${GREEN}$EXIT_CODE${NC}"
+echo -e "  Array: [42, 23, 17, 8, 4]"
+echo -e "  Sorted sum (exit code): ${GREEN}$EXIT_CODE${NC}"
+echo -e "  Expected: 4+8+17+23+42 = ${GREEN}94${NC}"
+if [ "$EXIT_CODE" -eq 94 ]; then
+    echo -e "  Status: ${GREEN}✓ PASS${NC}"
+else
+    echo -e "  Status: ${RED}✗ FAIL${NC}"
+fi
 echo -e "${BLUE}==========================================${NC}"
 
 rm -f /tmp/demo.asm /tmp/demo.o /tmp/runtime.o /tmp/demo_program

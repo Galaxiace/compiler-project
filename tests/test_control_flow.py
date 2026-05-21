@@ -7,6 +7,8 @@ import pytest
 import sys
 from pathlib import Path
 
+from tests.test_advanced_features import compile_and_run
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from lexer.scanner import Scanner
@@ -414,6 +416,298 @@ def test_bool_literals():
     assert "land" in ir or "AND" in ir
     assert "lor" in ir or "OR" in ir
     assert "NOT" in ir
+
+
+def test_compile_and_run_if():
+    """Интеграционный тест: if."""
+    source = """
+    fn main() -> int {
+        int x = 5;
+        if (x > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    exit_code = compile_and_run(source)
+    assert exit_code == 1
+
+
+def test_compile_and_run_while():
+    """Интеграционный тест: while."""
+    source = """
+    fn main() -> int {
+        int i = 0;
+        int sum = 0;
+        while (i < 10) {
+            sum = sum + i;
+            i = i + 1;
+        }
+        return sum;
+    }
+    """
+    exit_code = compile_and_run(source)
+    assert exit_code == 45  # 0+1+2+...+9 = 45
+
+
+def test_compile_and_run_short_circuit():
+    """Интеграционный тест: short-circuit AND."""
+    source = """
+    fn main() -> int {
+        int a = 0;
+        int b = 5;
+        if (a != 0 && b / a > 2) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    exit_code = compile_and_run(source)
+    assert exit_code == 0
+
+
+# ============= ИНТЕГРАЦИОННЫЕ ТЕСТЫ (compile and run) =============
+
+import subprocess
+import tempfile
+import os
+
+
+def compile_and_run(source: str) -> int:
+    """Компилирует и запускает программу, возвращает код выхода."""
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.src', delete=False) as f:
+        f.write(source)
+        src_file = f.name
+
+    asm_file = src_file.replace('.src', '.asm')
+    obj_file = src_file.replace('.src', '.o')
+    exe_file = src_file.replace('.src', '')
+
+    runtime_asm = Path(__file__).parent.parent / 'runtime' / 'runtime.asm'
+    runtime_obj = '/tmp/runtime_test.o'
+
+    try:
+        # 1. Компиляция в ассемблер
+        result = subprocess.run(
+            ['python', '-m', 'lexer.cli', '--input', src_file, '--mode', 'compile', '--output', asm_file],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            return -1
+
+        # 2. Ассемблирование программы
+        result = subprocess.run(['nasm', '-f', 'elf64', '-o', obj_file, asm_file], capture_output=True)
+        if result.returncode != 0:
+            return -2
+
+        # 3. Ассемблирование runtime
+        result = subprocess.run(['nasm', '-f', 'elf64', '-o', runtime_obj, str(runtime_asm)], capture_output=True)
+        if result.returncode != 0:
+            return -3
+
+        # 4. Линковка
+        result = subprocess.run(['ld', '-o', exe_file, runtime_obj, obj_file], capture_output=True)
+        if result.returncode != 0:
+            return -4
+
+        # 5. Запуск
+        result = subprocess.run([exe_file], capture_output=True)
+        exit_code = result.returncode
+
+    finally:
+        # Очистка
+        for f in [src_file, asm_file, obj_file, exe_file, runtime_obj]:
+            try:
+                os.unlink(f)
+            except:
+                pass
+
+    return exit_code
+
+
+def test_execute_if_true():
+    """Выполнение: if с истинным условием."""
+    source = """
+    fn main() -> int {
+        int x = 5;
+        if (x > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    assert compile_and_run(source) == 1
+
+
+def test_execute_if_false():
+    """Выполнение: if с ложным условием."""
+    source = """
+    fn main() -> int {
+        int x = -5;
+        if (x > 0) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    assert compile_and_run(source) == 0
+
+
+def test_execute_if_else_then():
+    """Выполнение: if-else (then ветка)."""
+    source = """
+    fn main() -> int {
+        int x = 5;
+        if (x > 0) {
+            return 1;
+        } else {
+            return -1;
+        }
+    }
+    """
+    assert compile_and_run(source) == 1
+
+
+def test_execute_if_else_else():
+    """Выполнение: if-else (else ветка)."""
+    source = """
+    fn main() -> int {
+        int x = -5;
+        if (x > 0) {
+            return 1;
+        } else {
+            return -1;
+        }
+    }
+    """
+    assert compile_and_run(source) == -1 % 256  # exit code для -1
+
+
+def test_execute_nested_if():
+    """Выполнение: вложенные if."""
+    source = """
+    fn main() -> int {
+        int x = 10;
+        int y = 5;
+        if (x > 0) {
+            if (y > 0) {
+                return 42;
+            }
+        }
+        return 0;
+    }
+    """
+    assert compile_and_run(source) == 42
+
+
+def test_execute_while_sum():
+    """Выполнение: while (сумма 0..9)."""
+    source = """
+    fn main() -> int {
+        int i = 0;
+        int sum = 0;
+        while (i < 10) {
+            sum = sum + i;
+            i = i + 1;
+        }
+        return sum;
+    }
+    """
+    assert compile_and_run(source) == 45
+
+
+def test_execute_while_zero_iter():
+    """Выполнение: while (ноль итераций)."""
+    source = """
+    fn main() -> int {
+        int i = 10;
+        int count = 0;
+        while (i < 5) {
+            count = count + 1;
+            i = i + 1;
+        }
+        return count;
+    }
+    """
+    assert compile_and_run(source) == 0
+
+
+def test_execute_for_factorial():
+    """Выполнение: for (факториал 5)."""
+    source = """
+    fn main() -> int {
+        int result = 1;
+        for (int i = 1; i <= 5; i = i + 1) {
+            result = result * i;
+        }
+        return result;
+    }
+    """
+    assert compile_and_run(source) == 120
+
+
+def test_execute_short_circuit_and():
+    """Выполнение: short-circuit AND (избегаем деления на 0)."""
+    source = """
+    fn main() -> int {
+        int a = 0;
+        int b = 5;
+        if (a != 0 && b / a > 2) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    assert compile_and_run(source) == 0
+
+
+def test_execute_short_circuit_or():
+    """Выполнение: short-circuit OR (избегаем деления на 0)."""
+    source = """
+    fn main() -> int {
+        int a = 5;
+        int b = 0;
+        if (a > 0 || b / a > 2) {
+            return 1;
+        }
+        return 0;
+    }
+    """
+    assert compile_and_run(source) == 1
+
+
+def test_execute_loop_with_condition():
+    """Выполнение: цикл с условием (сумма чётных)."""
+    source = """
+    fn main() -> int {
+        int sum = 0;
+        int i = 0;
+        while (i < 10) {
+            if (i % 2 == 0) {
+                sum = sum + i;
+            }
+            i = i + 1;
+        }
+        return sum;
+    }
+    """
+    assert compile_and_run(source) == 20  # 0+2+4+6+8
+
+
+def test_execute_nested_for():
+    """Выполнение: вложенные for."""
+    source = """
+    fn main() -> int {
+        int sum = 0;
+        for (int i = 1; i <= 3; i = i + 1) {
+            for (int j = 1; j <= 2; j = j + 1) {
+                sum = sum + i * j;
+            }
+        }
+        return sum;
+    }
+    """
+    assert compile_and_run(source) == 18  # 1*1+1*2+2*1+2*2+3*1+3*2
 
 
 if __name__ == '__main__':

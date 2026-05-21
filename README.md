@@ -1,8 +1,51 @@
-# MiniCompiler — Спринт 4: Промежуточное представление
+# MiniCompiler — Спринт 7: Расширенные возможности и оптимизации
 
+Учебный проект компилятора для упрощенного C-подобного языка.
+Реализованы лексический анализатор, рекурсивный парсер, семантический анализатор, промежуточное представление, кодогенерация x86-64, поддержка массивов и структур, оптимизации IR.
 
-Учебный проект компилятора для упрощенного C-подобного языка. 
-Реализованы лексический анализатор, рекурсивный парсер, семантический анализатор и промежуточное представление.
+---
+
+## Возможности языка
+
+### Типы данных
+- `int` — 32-битное целое
+- `float` — 32-битное с плавающей точкой
+- `bool` — булево (true/false)
+- `void` — отсутствие возвращаемого значения
+- Структуры (`struct`)
+- Массивы (`int arr[10]`, `int arr[]` как параметр)
+
+### Операторы
+- **Арифметические:** `+`, `-`, `*`, `/`, `%`
+- **Сравнения:** `==`, `!=`, `<`, `<=`, `>`, `>=`
+- **Логические:** `&&`, `||`, `!` (с short-circuit вычислением)
+- **Побитовые:** `&`, `|`, `^`
+- **Присваивание:** `=`, `+=`, `-=`, `*=`, `/=`, `%=`
+
+### Управляющие конструкции
+- `if` / `else` (включая вложенные)
+- `while` (с произвольным условием)
+- `for` (с инициализацией, условием, обновлением)
+- `return` (с опциональным значением)
+
+### Функции
+- Множественные параметры (включая массивы `int arr[]`)
+- Возврат значений (int, float, bool, struct)
+- Рекурсия
+- Void-функции
+
+### Массивы
+- Статические: `int arr[10];`
+- Инициализированные: `int arr[3] = {1, 2, 3};`
+- Параметры-массивы: `fn foo(int arr[], int size)`
+- Доступ к элементам: `arr[i]`
+- Передача по указателю в функции
+
+### Структуры
+- Объявление: `struct Point { int x; int y; }`
+- Доступ к полям: `p.x`, `p.y`
+- Вложенные структуры
+- Возврат структур из функций
 
 ---
 
@@ -91,7 +134,9 @@ compiler-project/
 ├── examples/                                     # Примеры кода
 │   ├── test_complete.src
 │   ├── test_full.src
-│   └── test_short.src
+│   ├── test_short.src
+│   ├── optimization_demo.src                     # Демонстрация оптимизаций
+│   └── quicksort.src                             # Демо-программа: Quicksort
 │
 │
 ├── build_demo.sh
@@ -218,47 +263,90 @@ python -m lexer.cli --input examples/test_short.src --mode compile --output test
 python -m lexer.cli --input examples/test_complete.src --mode compile --output test_complete.asm
 ```
 
-#### Проверка
+#### Компиляция с оптимизациями
+
+```bash
+
+python -m lexer.cli --input examples/quicksort.src --mode compile --output output.asm --optimize
+```
+
+#### Сборка и запуск
 
 ```bash
 
 # Ассемблирование
-nasm -f elf64 -o test_short.o test_short.asm
-
-# Ассемблирование runtime
+nasm -f elf64 -o output.o output.asm
 nasm -f elf64 -o runtime.o runtime/runtime.asm
 
 # Линковка
-ld -o test_short runtime.o test_short.o
+ld -o program runtime.o output.o
 
 # Запуск
-./test_short
-
-# Проверка результата
-echo $?
-# Ожидаемый вывод: 52 (42 + 10)
+./program
+echo "Exit code: $?"
 ```
 
 #### Демо
 
 ```bash
 
-python -m lexer.cli --input examples/demo_fibonacci.src --mode compile --output /tmp/demo.asm --optimize
-nasm -f elf64 -o /tmp/demo.o /tmp/demo.asm
-nasm -f elf64 -o /tmp/runtime.o runtime/runtime.asm
-ld -o /tmp/demo_program /tmp/runtime.o /tmp/demo.o
-/tmp/demo_program
-echo "Fibonacci(10) = $?"
+bash build_demo.sh
 ```
 
-#### Проверка оптимизаций
+#### Генерация IR с оптимизациями и статистикой
 
 ```bash
 
-python -m lexer.cli --input examples/demo_fibonacci.src --mode ir --optimize --stats 2>&1 | head -30
+python -m lexer.cli --input examples/quicksort.src --mode ir --optimize --stats
 ```
 
 ---
+
+## Исходный код: examples/quicksort.src
+
+```c
+fn swap(int arr[], int i, int j) -> void {
+    int temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+}
+
+fn partition(int arr[], int low, int high) -> int {
+    int pivot = arr[high];
+    int i = low - 1;
+    int j = low;
+    while (j < high) {
+        if (arr[j] < pivot) {
+            i = i + 1;
+            swap(arr, i, j);
+        }
+        j = j + 1;
+    }
+    swap(arr, i + 1, high);
+    return i + 1;
+}
+
+fn quicksort(int arr[], int low, int high) -> void {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quicksort(arr, low, pi - 1);
+        quicksort(arr, pi + 1, high);
+    }
+}
+
+fn main() -> int {
+    int arr[5];
+    arr[0] = 42;
+    arr[1] = 23;
+    arr[2] = 17;
+    arr[3] = 8;
+    arr[4] = 4;
+
+    quicksort(arr, 0, 4);
+
+    return arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+}
+```
 
 ## Пример вывода AST
 
@@ -444,14 +532,61 @@ cli.py — интерфейс командной строки
 
 Исходный код (.src) → Лексер → Парсер → Семантика → IR → x86-64 Ассемблер → NASM → .o → ld → программа
 
+### Оптимизации IR
+Компилятор выполняет следующие оптимизации промежуточного представления:
+
+```
+Оптимизация                        Описание
+Constant Folding                   Вычисление константных выражений на этапе компиляции: 3 + 4 → 7
+Constant Propagation	           Замена переменных на известные константы
+Dead Code Elimination	           Удаление неиспользуемых инструкций
+Unreachable Code Elimination	   Удаление недостижимых базовых блоков
+```
+
+### Пример оптимизации
+
+#### 1. Просмотр IR без оптимизаций
+
+```bash
+
+python -m lexer.cli --input examples/optimization_demo.src --mode ir 2>&1 | grep -v "^#"
+```
+
+#### 2. Просмотр IR с оптимизациями
+
+```bash
+
+python -m lexer.cli --input examples/optimization_demo.src --mode ir --optimize 2>&1 | grep -v "^#"
+```
+
+#### 3. Статистика оптимизаций
+
+```bash
+
+python -m lexer.cli --input examples/optimization_demo.src --mode ir --optimize --stats 2>&1 | grep -E "folded|propagated|removed|Reduction|Total instructions"
+```
+
+#### 4. Компиляция и запуск
+
+```bash
+
+python -m lexer.cli --input examples/optimization_demo.src --mode compile --output /tmp/opt_demo.asm --optimize 2>&1 | tail -1
+nasm -f elf64 /tmp/opt_demo.asm -o /tmp/opt_demo.o 2>&1
+nasm -f elf64 runtime/runtime.asm -o /tmp/runtime.o 2>&1
+ld -o /tmp/opt_demo /tmp/runtime.o /tmp/opt_demo.o 2>&1
+/tmp/opt_demo
+echo "Exit code: $? (ожидается 105: 40*2 + 100/4 = 80 + 25 = 105)"
+```
+
+---
 
 ### System V AMD64 ABI
 
 **Передача параметров:**
-- Целочисленные/указатели: RDI, RSI, RDX, RCX, R8, R9
+- Целочисленные/указатели (64-bit): RDI, RSI, RDX, RCX, R8, R9
+- Целочисленные (32-bit): EDI, ESI, EDX, ECX, R8D, R9D
 - Float/double: XMM0-XMM7
-- Остальные аргументы: на стеке (справа-налево)
-- Возврат int: RAX
+- Возврат int: RAX (EAX)
 - Возврат float: XMM0
 
 **Стек-фрейм:**
@@ -474,20 +609,4 @@ cli.py — интерфейс командной строки
 | ... |
 +------------------+
 Низкие адреса
-```
-
-### Структура тестов кодогенерации
-
-```
-tests/codegen/
-├── valid/
-│   ├── arithmetic_ops/       # +, -, *, /, %
-│   ├── control_flow/         # if/else, while, for
-│   ├── function_calls/       # вызовы функций, рекурсия
-│   ├── io_operations/        # print_int, read_int
-│   └── integration/          # комплексные тесты
-├── invalid/
-│   ├── assembly_errors/      # ошибки компиляции/ассемблирования
-│   └── runtime_errors/       # ошибки времени выполнения
-└── run_tests.sh              # скрипт автоматического тестирования
 ```

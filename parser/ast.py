@@ -474,14 +474,17 @@ class ParamNode(ASTNode):
     Пример:
         int x
         float value
+        int arr[]
     """
     type_name: str
     name: str
+    is_array: bool = False
 
-    def __init__(self, type_name: str, name: str, line: int, column: int):
+    def __init__(self, type_name: str, name: str, line: int, column: int, is_array: bool = False):
         super().__init__(NodeType.PARAM, line, column)
         self.type_name = type_name
         self.name = name
+        self.is_array = is_array
 
 
 @dataclass

@@ -1,0 +1,34 @@
+// examples/optimization_demo.src
+// Демонстрация всех оптимизаций компилятора
+// Этот файл показывает работу constant folding, constant propagation,
+// dead code elimination и unreachable code elimination
+
+fn main() -> int {
+    // Constant folding: все эти выражения будут вычислены на этапе компиляции
+    int a = 10 + 20;          // → 30
+    int b = a * 2;            // → 60 (после propagation a=30)
+    int c = b + 30;           // → 90 (после propagation b=60)
+    int d = c - 50;           // → 40
+
+    // Constant folding в условии
+    if (5 > 3) {              // → true
+        // Dead code: эти переменные нигде не используются
+        int unused1 = 100;
+        int unused2 = unused1 + 50;
+        int unused3 = unused2 * 2;
+
+        // Ещё constant folding в выражениях
+        int result = (d * 2) + (100 / 4);  // → 40*2 + 25 = 105
+
+        return result;        // → return 105
+    } else {
+        // Unreachable code: этот блок никогда не выполнится
+        int dead1 = 999;
+        int dead2 = dead1 * 10;
+        return dead2;
+    }
+
+    // Unreachable code: после return сюда никогда не дойдём
+    int unreachable = 42;
+    return unreachable;
+}

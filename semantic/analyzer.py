@@ -83,6 +83,14 @@ class SemanticAnalyzer(Visitor):
             if not param_type:
                 param_type = self._lookup_struct_type(param.type_name)
             if param_type:
+                # Если параметр - массив, создаём тип массива
+                if hasattr(param, 'is_array') and param.is_array:
+                    param_type = Type(
+                        name=f"array_{param.type_name}",
+                        is_array=True,
+                        element_type=param_type,
+                        size_bytes=8  # указатель
+                    )
                 param_types.append(param_type)
 
         return_type = self._get_type_from_name(node.return_type)
@@ -263,6 +271,15 @@ class SemanticAnalyzer(Visitor):
                 param_type = self._lookup_struct_type(param.type_name)
 
             if param_type:
+                # Если параметр - массив, создаём тип массива
+                if hasattr(param, 'is_array') and param.is_array:
+                    param_type = Type(
+                        name=f"array_{param.type_name}",
+                        is_array=True,
+                        element_type=param_type,
+                        size_bytes=8  # указатель
+                    )
+
                 param_info = SymbolInfo(
                     name=param.name,
                     kind=SymbolKind.PARAMETER,
@@ -748,6 +765,16 @@ class SemanticAnalyzer(Visitor):
             param_type = self._get_type_from_name(param.type_name)
             if not param_type:
                 param_type = self._lookup_struct_type(param.type_name)
+
+            # Если параметр - массив, создаём тип массива
+            if hasattr(param, 'is_array') and param.is_array:
+                if param_type:
+                    param_type = Type(
+                        name=f"array_{param.type_name}",
+                        is_array=True,
+                        element_type=param_type,
+                        size_bytes=8  # указатель
+                    )
 
             arg_type = self._analyze_expression(arg)
 

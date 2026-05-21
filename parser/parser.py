@@ -289,9 +289,9 @@ class Parser:
 
     def parse_parameter(self) -> ParamNode:
         """
-        Parameter ::= Type Identifier
+        Parameter ::= Type Identifier [ "[" "]" ]
         """
-        # Тип параметра - может быть ключевым словом или идентификатором
+        # Тип параметра
         if self.match(TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.VOID, TokenType.IDENTIFIER):
             type_token = self.previous()
             type_name = type_token.lexeme
@@ -303,7 +303,13 @@ class Parser:
         name_token = self.consume(TokenType.IDENTIFIER, "Ожидалось имя параметра")
         name = name_token.lexeme
 
-        return ParamNode(type_name, name, type_token.line, type_token.column)
+        # Проверяем, является ли параметр массивом (int arr[])
+        is_array = False
+        if self.match(TokenType.LBRACKET):
+            self.consume(TokenType.RBRACKET, "Ожидалась ']' после '['")
+            is_array = True
+
+        return ParamNode(type_name, name, type_token.line, type_token.column, is_array)
 
     def parse_struct_decl(self) -> StructDeclNode:
         """

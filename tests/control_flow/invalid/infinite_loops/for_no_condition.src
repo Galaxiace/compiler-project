@@ -1,0 +1,9 @@
+fn main() -> int {
+    int i = 0;
+    for (;;) {
+        i = i + 1;
+        if (i > 50) {
+            return i;
+        }
+    }
+}
