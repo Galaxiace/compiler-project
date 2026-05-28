@@ -21,7 +21,8 @@ class NodeType(Enum):
     STRUCT_DECL = auto()
     VAR_DECL = auto()
     PARAM = auto()
-    ARRAY_DECL = auto()  # НОВОЕ: объявление массива
+    ARRAY_DECL = auto()
+    EXTERN_DECL = auto()      # НОВОЕ: объявление внешней функции
 
     # Statements (операторы)
     BLOCK = auto()
@@ -41,8 +42,8 @@ class NodeType(Enum):
     ASSIGNMENT = auto()
     GROUPING = auto()
     CAST = auto()
-    ARRAY_ACCESS = auto()        # НОВОЕ: доступ к элементу массива
-    STRUCT_FIELD_ACCESS = auto() # НОВОЕ: доступ к полю структуры
+    ARRAY_ACCESS = auto()
+    STRUCT_FIELD_ACCESS = auto()
 
 
 @dataclass
@@ -529,6 +530,31 @@ class StructDeclNode(DeclarationNode):
         super().__init__(NodeType.STRUCT_DECL, line, column)
         self.name = name
         self.fields = fields
+
+
+# ============= НОВОЕ: Extern Declaration =============
+
+@dataclass
+class ExternDeclNode(DeclarationNode):
+    """
+    Объявление внешней функции: extern тип имя(параметры);
+
+    Пример:
+        extern int printf(char* format, ...);
+        extern void malloc(int size);
+    """
+    return_type: str
+    name: str
+    parameters: List[ParamNode]
+    is_variadic: bool = False
+
+    def __init__(self, return_type: str, name: str, parameters: List[ParamNode],
+                 line: int, column: int, is_variadic: bool = False):
+        super().__init__(NodeType.EXTERN_DECL, line, column)
+        self.return_type = return_type
+        self.name = name
+        self.parameters = parameters
+        self.is_variadic = is_variadic
 
 
 # ============= Program Node (Корневой узел) =============

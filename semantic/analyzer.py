@@ -4,15 +4,15 @@
 Обходит AST, выполняет проверки и строит декорированное дерево.
 """
 
-from typing import List, Dict, Optional, Any, Union
 from parser.ast import (
     ProgramNode, FunctionDeclNode, VarDeclNode, StructDeclNode, ArrayDeclNode,
+    ExternDeclNode,
     BlockStmtNode, IfStmtNode, WhileStmtNode, ForStmtNode,
     ReturnStmtNode, ExprStmtNode, EmptyStmtNode,
     LiteralExprNode, IdentifierExprNode, BinaryExprNode,
     UnaryExprNode, CallExprNode, AssignmentExprNode, GroupingExprNode,
     CastExprNode, ArrayAccessExprNode, StructFieldAccessExprNode,
-    StatementNode, ExpressionNode, DeclarationNode  # Добавлены недостающие
+    StatementNode, ExpressionNode, DeclarationNode
 )
 from parser.visitor import Visitor
 from .symbol_table import SymbolTable, SymbolInfo, SymbolKind, Type, create_builtin_types
@@ -61,6 +61,8 @@ class SemanticAnalyzer(Visitor):
         for decl in ast.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._register_function(decl)
+            elif isinstance(decl, ExternDeclNode):
+                self._register_extern_function(decl)
             elif isinstance(decl, StructDeclNode):
                 self._register_struct(decl)
             elif isinstance(decl, VarDeclNode):
@@ -114,6 +116,55 @@ class SemanticAnalyzer(Visitor):
             parameters=node.parameters,
             return_type_node=return_type
         )
+
+        self.symbol_table.insert(node.name, info)
+
+    def _register_extern_function(self, node: ExternDeclNode):
+        """Регистрирует внешнюю функцию в таблице символов."""
+        existing = self.symbol_table.lookup(node.name)
+        if existing and existing.kind == SymbolKind.FUNCTION:
+            self.errors.append(DuplicateDeclarationError(
+                node.name, "function", node.line, node.column, existing.line
+            ))
+            return
+
+        param_types = []
+        for param in node.parameters:
+            param_type = self._get_type_from_name(param.type_name)
+            if not param_type:
+                param_type = self._lookup_struct_type(param.type_name)
+            if param_type:
+                if hasattr(param, 'is_array') and param.is_array:
+                    param_type = Type(
+                        name=f"array_{param.type_name}",
+                        is_array=True,
+                        element_type=param_type,
+                        size_bytes=8
+                    )
+                param_types.append(param_type)
+
+        return_type = self._get_type_from_name(node.return_type)
+        if not return_type:
+            return_type = self._lookup_struct_type(node.return_type)
+        if not return_type:
+            return_type = self.builtin_types['void']
+
+        func_type = Type(
+            name=node.name,
+            return_type=return_type,
+            param_types=param_types
+        )
+
+        info = SymbolInfo(
+            name=node.name,
+            kind=SymbolKind.FUNCTION,
+            type=func_type,
+            line=node.line,
+            column=node.column,
+            parameters=node.parameters,
+            return_type_node=return_type
+        )
+        info.is_variadic = node.is_variadic
 
         self.symbol_table.insert(node.name, info)
 
@@ -244,6 +295,8 @@ class SemanticAnalyzer(Visitor):
         for decl in ast.declarations:
             if isinstance(decl, FunctionDeclNode):
                 self._analyze_function(decl)
+            elif isinstance(decl, ExternDeclNode):
+                pass  # Внешние функции не имеют тела для анализа
             elif isinstance(decl, StructDeclNode):
                 pass
             elif isinstance(decl, VarDeclNode):
@@ -752,14 +805,27 @@ class SemanticAnalyzer(Visitor):
             ))
             return None
 
+        # Получаем информацию о функции для проверки variadic
+        is_variadic = getattr(func_info, 'is_variadic', False)
+
         expected_count = len(func_info.parameters)
         actual_count = len(node.arguments)
 
-        if expected_count != actual_count:
-            self.errors.append(ArgumentCountMismatchError(
-                node.callee.name, expected_count, actual_count, node.line, node.column
-            ))
-            return None
+        if is_variadic:
+            if actual_count < expected_count:
+                self.errors.append(ArgumentCountMismatchError(
+                    node.callee.name, expected_count, actual_count, node.line, node.column
+                ))
+                return None
+        else:
+            if expected_count != actual_count:
+                self.errors.append(ArgumentCountMismatchError(
+                    node.callee.name, expected_count, actual_count, node.line, node.column
+                ))
+                return None
+
+        # Для variadic функций проверяем типы только известных параметров
+        params_to_check = len(func_info.parameters)
 
         for i, (param, arg) in enumerate(zip(func_info.parameters, node.arguments)):
             param_type = self._get_type_from_name(param.type_name)
@@ -887,6 +953,9 @@ class SemanticAnalyzer(Visitor):
                 if func_info:
                     decorated_func = self._decorate_function(decl, func_info)
                     decorated.declarations.append(decorated_func)
+            elif isinstance(decl, ExternDeclNode):
+                # Внешние функции — пропускаем (не генерируют код)
+                pass
             elif isinstance(decl, StructDeclNode):
                 struct_info = self.symbol_table.lookup(decl.name)
                 if struct_info:

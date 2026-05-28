@@ -17,6 +17,7 @@ class TokenType(Enum):
     VOID = auto()
     STRUCT = auto()
     FN = auto()
+    EXTERN = auto()
 
     # Operators
     PLUS = auto()  # +
@@ -44,6 +45,7 @@ class TokenType(Enum):
     NOT = auto()  # ! (логическое НЕ)
     ARROW = auto()  # ->
     DOT = auto()   # . (доступ к полям)
+    ELLIPSIS = auto()  # ... (variadic)
 
     # Delimiters
     LPAREN = auto()  # (
@@ -107,7 +109,8 @@ KEYWORDS = {
     'false': TokenType.FALSE,
     'void': TokenType.VOID,
     'struct': TokenType.STRUCT,
-    'fn': TokenType.FN
+    'fn': TokenType.FN,
+    'extern': TokenType.EXTERN
 }
 
 # Операторы и их типы
@@ -137,6 +140,7 @@ OPERATORS = {
     '/=': TokenType.SLASH_ASSIGN,
     '%=': TokenType.PERCENT_ASSIGN,
     '.': TokenType.DOT,  # оператор доступа к полям
+    '...': TokenType.ELLIPSIS,  # троеточие для variadic
 }
 
 # Разделители

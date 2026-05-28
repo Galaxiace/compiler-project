@@ -117,23 +117,34 @@ class X86Generator:
             self.output.append("")
 
     def _escape_string(self, s: str) -> str:
+        """Преобразует строку в формат NASM с escape-последовательностями."""
         result = []
+        current_chars = []
+
+        def flush_chars():
+            if current_chars:
+                result.append("'" + "".join(current_chars) + "'")
+                current_chars.clear()
+
         for ch in s:
             if ch == '\n':
-                result.append('`,10,`')
+                flush_chars()
+                result.append('10')
             elif ch == '\t':
-                result.append('`,9,`')
-            elif ch == '"':
-                result.append('`"`')
-            elif ch == '\\':
-                result.append('`\\`')
+                flush_chars()
+                result.append('9')
+            elif ch == "'":
+                current_chars.append("', 39, '")
             elif 32 <= ord(ch) < 127:
-                result.append(ch)
+                current_chars.append(ch)
             else:
-                result.append(f'`,{ord(ch)},`')
+                current_chars.append(str(ord(ch)))
+
+        flush_chars()
+
         if not result:
-            return "``"
-        return "`" + "".join(result) + "`"
+            return "''"
+        return ", ".join(result)
 
     def _is_float_type(self, operand) -> bool:
         if hasattr(operand, 'ir_type') and operand.ir_type:
@@ -157,6 +168,9 @@ class X86Generator:
         return False
 
     def _make_label(self, label: str) -> str:
+        # Строковые и float метки не префиксуем
+        if label.startswith('str_') or label.startswith('LC'):
+            return label
         if label.startswith('.'):
             return f"{self.current_function_name}{label}"
         return f"{self.current_function_name}.{label}"
@@ -440,6 +454,9 @@ class X86Generator:
             if len(ops) < 2:
                 return None
             callee = ops[1].value
+            # Для variadic-функций обнуляем AL (количество XMM-регистров)
+            if callee in ('printf', 'scanf', 'fprintf', 'sprintf') or callee in self.external_functions:
+                return f"xor eax, eax\n    call {callee}"
             return f"call {callee}"
 
         elif opcode == IROpcode.PARAM:
@@ -777,7 +794,7 @@ class X86Generator:
             elif isinstance(val, bool):
                 return "1" if val else "0"
             elif isinstance(val, str):
-                label = f".str_{len(self.string_literals)}"
+                label = f"str_{len(self.string_literals)}"
                 self.string_literals.append((label, val))
                 return label
             return str(val)

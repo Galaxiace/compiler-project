@@ -145,9 +145,10 @@ class Parser:
             # Проверяем начало нового оператора или объявления
             token = self.peek()
             if token.type in [
-                TokenType.FN, TokenType.STRUCT, TokenType.INT, TokenType.FLOAT,
-                TokenType.BOOL, TokenType.VOID, TokenType.IF, TokenType.WHILE,
-                TokenType.FOR, TokenType.RETURN, TokenType.LBRACE
+                TokenType.FN, TokenType.EXTERN, TokenType.STRUCT,
+                TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.VOID,
+                TokenType.IF, TokenType.WHILE, TokenType.FOR,
+                TokenType.RETURN, TokenType.LBRACE
             ]:
                 return
 
@@ -198,13 +199,15 @@ class Parser:
 
     def parse_declaration(self) -> Optional[DeclarationNode]:
         """
-        Declaration ::= FunctionDecl | StructDecl | VarDecl | ArrayDecl
+        Declaration ::= FunctionDecl | ExternDecl | StructDecl | VarDecl | ArrayDecl
         """
         token = self.peek()
 
         try:
             if self.match(TokenType.FN):
                 return self.parse_function_decl()
+            elif self.match(TokenType.EXTERN):
+                return self.parse_extern_decl()
             elif self.match(TokenType.STRUCT):
                 return self.parse_struct_decl()
             elif self.match(TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.VOID):
@@ -269,6 +272,53 @@ class Parser:
 
         return FunctionDeclNode(return_type, name, parameters, body, token.line, token.column)
 
+    def parse_extern_decl(self) -> ExternDeclNode:
+        """
+        ExternDecl ::= "extern" Type Identifier "(" [ Parameters ] ")" ";"
+        """
+        token = self.previous()  # токен extern
+
+        # Тип возврата
+        if self.match(TokenType.INT, TokenType.FLOAT, TokenType.BOOL, TokenType.VOID, TokenType.IDENTIFIER):
+            return_type = self.previous().lexeme
+        else:
+            return_type = self.consume(TokenType.IDENTIFIER, "Ожидался тип возврата extern функции").lexeme
+
+        # Имя функции
+        name_token = self.consume(TokenType.IDENTIFIER, "Ожидалось имя extern функции")
+        name = name_token.lexeme
+
+        # Открывающая скобка параметров
+        self.consume(TokenType.LPAREN, "Ожидалась '(' после имени функции")
+
+        # Парсим параметры или variadic
+        parameters = []
+        is_variadic = False
+
+        if self.match(TokenType.ELLIPSIS):
+            # Только variadic: extern int foo(...)
+            is_variadic = True
+        elif not self.check(TokenType.RPAREN):
+            # Есть параметры
+            parameters = self.parse_parameters()
+            # Проверяем, есть ли , ... после параметров
+            if self.match(TokenType.COMMA):
+                if self.match(TokenType.ELLIPSIS):
+                    is_variadic = True
+                else:
+                    # Если после запятой не ..., значит ещё параметры
+                    self.current -= 1  # возвращаем запятую
+                    more_params = self.parse_parameters()
+                    parameters.extend(more_params)
+
+        # Закрывающая скобка параметров
+        self.consume(TokenType.RPAREN, "Ожидалась ')' после параметров")
+
+        # Точка с запятой
+        self.consume(TokenType.SEMICOLON, "Ожидалась ';' после extern объявления")
+
+        return ExternDeclNode(return_type, name, parameters, token.line, token.column, is_variadic)
+
     def parse_parameters(self) -> List[ParamNode]:
         """
         Parameters ::= Parameter { "," Parameter }
@@ -282,6 +332,11 @@ class Parser:
 
         # Остальные параметры через запятую
         while self.match(TokenType.COMMA):
+            # Проверяем, не variadic ли это (...)
+            if self.check(TokenType.ELLIPSIS):
+                # Возвращаем запятую назад (ellipsis обработает вызывающий код)
+                self.current -= 1
+                break
             param = self.parse_parameter()
             parameters.append(param)
 

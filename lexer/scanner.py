@@ -67,9 +67,13 @@ class Scanner:
             # Добавляем поддержку квадратных скобок
             self._add_delimiter_token(char)
         elif char == '.':
-            # Проверяем, является ли точка частью числа
-            if self._peek().isdigit():
-                # Это начало дробной части без целой части? Обработаем как число
+            # Проверяем, является ли это троеточием (variadic)
+            if self._peek() == '.' and self._peek_next() == '.':
+                self._advance()  # вторая точка
+                self._advance()  # третья точка
+                self._add_token(TokenType.ELLIPSIS, '...')
+            elif self._peek().isdigit():
+                # Это начало дробной части
                 self._read_number()
             else:
                 # Это оператор доступа к полям структур
@@ -230,6 +234,11 @@ class Scanner:
 
         # Извлекаем значение строки без кавычек
         string_value = self.source[self.start + 1:self.current - 1]
+        # Обработка escape-последовательностей
+        string_value = string_value.replace('\\n', '\n')
+        string_value = string_value.replace('\\t', '\t')
+        string_value = string_value.replace('\\"', '"')
+        string_value = string_value.replace('\\\\', '\\')
         self._add_token(TokenType.STRING_LITERAL, literal=string_value)
 
     def _read_number(self):

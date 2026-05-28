@@ -653,14 +653,13 @@ class IRGenerator:
 
         if return_type and return_type.is_struct:
             # Для функций, возвращающих структуру, результат - это указатель
-            # Выделяем память под результат
             total_size = return_type.size_bytes if return_type.size_bytes else len(return_type.fields) * 4
             result_ptr = self.current_function.new_temp("call_struct", return_type)
             ptr_type = Type(name=return_type.name, is_array=True, size_bytes=8)
             result_ptr.ir_type = ptr_type
             self._emit_alloca(result_ptr, total_size, expr)
 
-            # Вызываем функцию - результат будет скопирован в result_ptr
+            # Вызываем функцию
             self._emit_call(result_ptr, callee_name, len(args), expr)
             self.last_value = result_ptr
         else:

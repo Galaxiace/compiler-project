@@ -17,24 +17,22 @@ echo ""
 
 echo -e "${YELLOW}[1/3] Компиляция...${NC}"
 python -m lexer.cli --input "$DEMO_FILE" --mode compile --output /tmp/demo.asm 2>&1 | tail -1
-if [ $? -ne 0 ]; then
+if [ ${PIPESTATUS[0]} -ne 0 ]; then
     echo -e "${RED}Ошибка компиляции!${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Компиляция успешна${NC}"
 
-echo -e "${YELLOW}[2/3] Ассемблирование...${NC}"
+echo -e "${YELLOW}[2/3] Ассемблирование и линковка...${NC}"
 nasm -f elf64 -o /tmp/demo.o /tmp/demo.asm 2>/dev/null
+gcc -no-pie -o /tmp/demo_program /tmp/demo.o 2>/dev/null
 if [ $? -ne 0 ]; then
-    echo -e "${RED}Ошибка ассемблирования!${NC}"
+    echo -e "${RED}Ошибка сборки!${NC}"
     exit 1
 fi
-nasm -f elf64 -o /tmp/runtime.o "$PROJECT_DIR/runtime/runtime.asm" 2>/dev/null
-echo -e "${GREEN}✓ Ассемблирование успешно${NC}"
+echo -e "${GREEN}✓ Готово${NC}"
 
-echo -e "${YELLOW}[3/3] Линковка и запуск...${NC}"
-ld -o /tmp/demo_program /tmp/runtime.o /tmp/demo.o 2>/dev/null
-
+echo -e "${YELLOW}[3/3] Запуск...${NC}"
 echo ""
 echo -e "${BLUE}==========================================${NC}"
 echo -e "${BLUE}  OUTPUT${NC}"
@@ -46,9 +44,8 @@ EXIT_CODE=$?
 
 echo ""
 echo -e "${BLUE}==========================================${NC}"
-echo -e "  Array: [42, 23, 17, 8, 4]"
-echo -e "  Sorted sum (exit code): ${GREEN}$EXIT_CODE${NC}"
-echo -e "  Expected: 4+8+17+23+42 = ${GREEN}94${NC}"
+echo -e "  Exit code: ${GREEN}$EXIT_CODE${NC}"
+echo -e "  Expected: ${GREEN}94${NC}"
 if [ "$EXIT_CODE" -eq 94 ]; then
     echo -e "  Status: ${GREEN}✓ PASS${NC}"
 else
@@ -56,6 +53,6 @@ else
 fi
 echo -e "${BLUE}==========================================${NC}"
 
-rm -f /tmp/demo.asm /tmp/demo.o /tmp/runtime.o /tmp/demo_program
+rm -f /tmp/demo.asm /tmp/demo.o /tmp/demo_program
 
 exit 0

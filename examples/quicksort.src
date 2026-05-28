@@ -1,3 +1,18 @@
+extern int printf(int format, ...);
+
+fn print_array(int arr[], int size) -> void {
+    printf("  [");
+    int i = 0;
+    while (i < size) {
+        printf("%d", arr[i]);
+        if (i < size - 1) {
+            printf(", ");
+        }
+        i = i + 1;
+    }
+    printf("]\n");
+}
+
 fn swap(int arr[], int i, int j) -> void {
     int temp = arr[i];
     arr[i] = arr[j];
@@ -35,7 +50,17 @@ fn main() -> int {
     arr[3] = 8;
     arr[4] = 4;
     
+    printf("=== Quicksort Demo ===\n");
+    printf("Original array:\n");
+    print_array(arr, 5);
+    
     quicksort(arr, 0, 4);
     
-    return arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+    printf("Sorted array:\n");
+    print_array(arr, 5);
+    
+    int sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
+    printf("Sum: %d (expected: 94)\n", sum);
+    
+    return sum;
 }

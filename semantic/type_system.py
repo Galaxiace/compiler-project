@@ -37,6 +37,10 @@ class TypeCompatibility:
         if lhs.is_struct and rhs.is_struct:
             return lhs.name == rhs.name
 
+        # Указатели совместимы (string = char*, int можно использовать как указатель)
+        if lhs.name == 'int' and rhs.name == 'string':
+            return True
+
         key = (rhs.name, lhs.name)
         return cls.IMPLICIT_CASTS.get(key, False)
 

@@ -101,6 +101,7 @@ class SymbolInfo:
     # Дополнительная информация для функций
     parameters: List[Any] = field(default_factory=list)  # List[ParamNode]
     return_type_node: Optional[Type] = None
+    is_variadic: bool = False  # Для extern функций с ...
 
     # Для структур
     fields: Dict[str, Type] = field(default_factory=dict)
