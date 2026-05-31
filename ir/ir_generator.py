@@ -148,7 +148,7 @@ class IRGenerator:
         var_info = self.symbol_table.lookup(node.name)
 
         if isinstance(node, ArrayDeclNode):
-            # Массив - выделяем память на стеке через ALLOCA
+            # Массив - выделяем память в куче через malloc
             element_size = 4
 
             if node.size and isinstance(node.size, LiteralExprNode):
@@ -167,13 +167,21 @@ class IRGenerator:
 
             self.current_function.local_vars[node.name] = array_type
 
-            # Создаем временную для указателя на массив
-            array_ptr = self.current_function.new_temp(f"array_{node.name}", array_type)
+            # Создаем временную для указателя на массив (ptr_type для 64-бит)
+            ptr_type = Type(
+                name=f"array_{node.type_name}",
+                is_array=True,
+                size_bytes=8
+            )
+            array_ptr = self.current_function.new_temp(f"array_{node.name}", ptr_type)
             self.current_function.var_to_temp[node.name] = array_ptr
 
-            # Выделяем память на стеке через ALLOCA
+            # Выделяем память через malloc
             total_size = array_size * element_size
-            self._emit_alloca(array_ptr, total_size, node)
+            # PARAM 0, total_size
+            self._emit_param(0, Lit(total_size, Type('int')), node)
+            # CALL malloc — результат сразу в array_ptr
+            self._emit_call(array_ptr, "malloc", 1, node)
 
             # Инициализация массива значениями
             if node.initializer and isinstance(node.initializer, list):

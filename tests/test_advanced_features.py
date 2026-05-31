@@ -54,16 +54,13 @@ def compile_and_run(source: str) -> int:
     obj_file = src_file.replace('.src', '.o')
     exe_file = src_file.replace('.src', '')
 
-    runtime_asm = Path(__file__).parent.parent / 'runtime' / 'runtime.asm'
-    runtime_obj = '/tmp/runtime_test.o'
-
     try:
         # 1. Компиляция в ассемблер
         result = subprocess.run(
             ['python', '-m', 'lexer.cli', '--input', src_file, '--mode', 'compile', '--output', asm_file],
             capture_output=True, text=True
         )
-        if result.returncode != 0:
+        if result.returncode != 0 or "Найдены ошибки" in result.stderr or "Найдены синтаксические ошибки" in result.stdout or "Найдены семантические ошибки" in result.stdout:
             return -1
 
         # 2. Ассемблирование программы
@@ -71,23 +68,18 @@ def compile_and_run(source: str) -> int:
         if result.returncode != 0:
             return -2
 
-        # 3. Ассемблирование runtime
-        result = subprocess.run(['nasm', '-f', 'elf64', '-o', runtime_obj, str(runtime_asm)], capture_output=True)
-        if result.returncode != 0:
-            return -3
-
-        # 4. Линковка
-        result = subprocess.run(['ld', '-o', exe_file, runtime_obj, obj_file], capture_output=True)
+        # 3. Линковка через gcc (для malloc и libc)
+        result = subprocess.run(['gcc', '-no-pie', '-o', exe_file, obj_file], capture_output=True)
         if result.returncode != 0:
             return -4
 
-        # 5. Запуск
+        # 4. Запуск
         result = subprocess.run([exe_file], capture_output=True)
         exit_code = result.returncode
 
     finally:
         # Очистка
-        for f in [src_file, asm_file, obj_file, exe_file, runtime_obj]:
+        for f in [src_file, asm_file, obj_file, exe_file]:
             try:
                 os.unlink(f)
             except:

@@ -66,7 +66,7 @@ class X86Generator:
             self.output.append(f"extern {func}")
         if self.external_functions:
             self.output.append("")
-        self.output.append("extern print_int, print_string, read_int, exit")
+        self.output.append("extern print_int, print_string, read_int, exit, malloc, free")
         self.output.append("")
 
     def _generate_data_section(self):
@@ -196,19 +196,11 @@ class X86Generator:
                                 self.param_to_temp[param.value] = dest.value
                                 break
 
-        alloca_vars = set()
-        for block in func.blocks:
-            for instr in block.instructions:
-                if instr.opcode == IROpcode.ALLOCA and len(instr.operands) > 0:
-                    alloca_vars.add(instr.operands[0].value)
-
         temps_in_func = {}
         for block in func.blocks:
             for instr in block.instructions:
                 for op in instr.operands:
                     if op.operand_type == IROperandType.TEMPORARY:
-                        if op.value in alloca_vars:
-                            continue
                         if self._is_ptr_type(op):
                             size = 8
                         else:
@@ -306,8 +298,11 @@ class X86Generator:
                         if dest.operand_type == IROperandType.TEMPORARY:
                             dest_str = self._op(dest)
                             is_float = self._is_float_type(dest)
+                            is_ptr = self._is_ptr_type(dest)
                             if is_float:
                                 self._emit(f"movss {dest_str}, xmm0")
+                            elif is_ptr:
+                                self._emit(f"mov qword {dest_str}, rax")
                             else:
                                 self._emit(f"mov dword {dest_str}, eax")
                     continue
@@ -327,6 +322,23 @@ class X86Generator:
         self._emit("pop rbp")
         self._emit("ret")
         self.output.append("")
+
+
+    def _translate_alloca(self, instr, func):
+        """ALLOCA для структур (стек)."""
+        ops = instr.operands
+        if len(ops) >= 2:
+            dest = ops[0]
+            size = ops[1].value
+            aligned_size = (size + 15) & ~15
+            self._emit(f"sub rsp, {aligned_size}")
+
+            dest_name = dest.value
+            offset = self.current_stack_frame.get_offset(dest_name)
+            if offset is None:
+                offset = self.current_stack_frame.allocate(dest_name, 8)
+
+            self._emit(f"mov qword [rbp{offset}], rsp")
 
     def _order_blocks(self, func):
         """Упорядочивает блоки для корректного вывода: entry первым, затем по связям."""
@@ -367,23 +379,6 @@ class X86Generator:
                 ordered.append(block)
 
         return ordered
-
-
-    def _translate_alloca(self, instr, func):
-        """ALLOCA для массивов."""
-        ops = instr.operands
-        if len(ops) >= 2:
-            dest = ops[0]
-            size = ops[1].value
-            aligned_size = (size + 15) & ~15
-            self._emit(f"sub rsp, {aligned_size}")
-
-            dest_name = dest.value
-            offset = self.current_stack_frame.get_offset(dest_name)
-            if offset is None:
-                offset = self.current_stack_frame.allocate(dest_name, 8)
-
-            self._emit(f"mov qword [rbp{offset}], rsp")
 
     def _save_parameters(self, func):
         int_regs_64 = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
