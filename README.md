@@ -12,10 +12,18 @@
 
 # Клонирование репозитория
 git clone https://github.com/Galaxiace/compiler-project
+sudo apt update # Опционально
+sudo apt install -y python3-venv python3-pip python3-full nasm gcc
 cd compiler-project
+python3 -m venv venv
+source venv/bin/activate
 
 # Установка
+pip install -r requirements.txt
 pip install -e .
+
+# Проверка
+mycc --version
 ```
 
 ## Первая компиляция

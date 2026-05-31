@@ -16,8 +16,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Galaxiace/compiler-project",
-    py_modules=['mycc'],  # Явно указываем mycc.py как модуль
-    packages=find_packages(),  # Также ищем пакеты (lexer, parser, etc.)
+    py_modules=['mycc', 'errors'],
+    packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
