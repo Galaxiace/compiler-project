@@ -1,7 +1,189 @@
-# MiniCompiler — Спринт 7: Расширенные возможности и оптимизации
+# MiniCompiler — Спринт 8: Финальная версия
 
-Учебный проект компилятора для упрощенного C-подобного языка.
-Реализованы лексический анализатор, рекурсивный парсер, семантический анализатор, промежуточное представление, кодогенерация x86-64, поддержка массивов и структур, оптимизации IR.
+Учебный проект компилятора для упрощенного C-подобного языка.  
+Реализованы: лексический анализатор, рекурсивный парсер, семантический анализатор,  
+промежуточное представление (IR), оптимизации IR, кодогенерация x86-64.
+
+---
+
+## Быстрый старт
+
+```bash
+
+# Клонирование репозитория
+git clone https://github.com/Galaxiace/compiler-project
+cd compiler-project
+
+# Установка
+pip install -e .
+```
+
+## Первая компиляция
+```bash
+
+mycc examples/quicksort.src -o quicksort
+./quicksort
+```
+
+### Ожидаемый вывод:
+
+```
+=== Quicksort Demo ===
+Original array:
+  [42, 23, 17, 8, 4]
+Sorted array:
+  [4, 8, 17, 23, 42]
+Sum: 94 (expected: 94)
+```
+
+---
+
+## Использование
+
+### Компиляция в исполняемый файл
+
+```bash
+
+rm -f program
+mycc examples/quicksort.src -o program
+./program
+```
+
+---
+
+### Генерация только ассемблера (До Ассемблирования и Линковки)
+
+```bash
+
+rm -f program.asm
+mycc -S examples/quicksort.src -o program.asm
+cat program.asm
+```
+
+### Компиляция в объектный файл (До Линковки)
+
+```bash
+
+rm -f program.o
+mycc -c examples/quicksort.src -o program.o
+file program.o
+```
+
+---
+
+### Вывод токенов (препроцессор)
+
+```bash
+
+mycc -E examples/quicksort.src
+```
+
+### Вывод AST в различных форматах
+
+```bash
+
+rm -f ast.dot
+rm -f ast.png
+mycc --ast examples/quicksort.src
+mycc --ast --ast-format=json examples/quicksort.src
+mycc --ast --ast-format=dot examples/quicksort.src -o ast.dot
+dot -Tpng ast.dot -o ast.png
+xdg-open ast.png
+```
+
+### Вывод IR с оптимизациями
+
+```bash
+
+mycc --ir -O3 --stats examples/quicksort.src
+```
+
+### Подробный вывод
+
+```bash
+
+mycc -v examples/quicksort.src -o program
+```
+
+---
+
+## Все опции компилятора
+
+### Полный список опций
+
+| Опция               | Аргумент                  | Описание                                                         |
+|---------------------|---------------------------|------------------------------------------------------------------|
+| `-o <file>`         | `путь`                    | Записать результат в указанный файл                              |
+| `-S`                | —                         | Генерация только ассемблера (без ассемблирования и линковки)     |
+| `-c`                | —                         | Компиляция в объектный файл (без линковки)                       |
+| `-E`                | —                         | Только препроцессор (вывод токенов)                              |
+| `--ast`             | —                         | Вывод абстрактного синтаксического дерева (AST)                  |
+| `--ir`              | —                         | Вывод промежуточного представления (IR)                          |
+| `--ast-format`      | `text`, `dot`, `json`     | Формат вывода AST (по умолчанию: `text`)                         |
+| `--ir-format`       | `text`, `dot`, `json`     | Формат вывода IR (по умолчанию: `text`)                          |
+| `--optimize`,  `-O` | `0`, `1`, `2`, `3`        | Уровень оптимизации (по умолчанию: `1` если указан флаг)         |
+| `--target`          | `архитектура`             | Целевая архитектура (по умолчанию: `x86_64`)                     |
+| `--verbose`, `-v`   | —                         | Подробный вывод всех этапов компиляции                           |
+| `-Wall`             | —                         | Включить все предупреждения                                      |
+| `-Werror`           | —                         | Обрабатывать предупреждения как ошибки                           |
+| `--format`          | `human`, `json`           | Формат вывода сообщений об ошибках (по умолчанию: `human`)       |
+| `--max-errors`      | `число`                   | Максимальное количество ошибок до остановки (по умолчанию: `20`) |
+| `--color`           | `always`, `never`, `auto` | Цветной вывод сообщений (по умолчанию: `auto`)                   |
+| `--help`            | —                         | Показать справку по использованию                                |
+| `--version`         | —                         | Показать версию компилятора                                      |
+
+### Примеры использования
+
+#### Базовая компиляция
+
+```bash
+
+mycc examples/quicksort.src -o program
+./program
+```
+
+#### Генерация ассемблера и просмотр
+
+```bash
+
+mycc -S examples/quicksort.src -o program.asm
+cat program.asm
+```
+
+#### Компиляция с оптимизациями и отладкой
+
+```bash
+
+mycc -O2 -v examples/quicksort.src -o program_debug
+```
+
+#### Просмотр AST и IR для отладки
+
+```bash
+
+mycc --ast --ir examples/quicksort.src
+```
+
+#### Компиляция с предупреждениями как ошибками
+
+```bash
+
+mycc -Wall -Werror examples/test_errors.src -o program
+```
+
+#### Показать справку
+
+```bash
+
+mycc --help
+```
+
+#### Показать версию
+
+```bash
+
+mycc --version
+```
 
 ---
 
@@ -30,7 +212,7 @@
 
 ### Функции
 - Множественные параметры (включая массивы `int arr[]`)
-- Возврат значений (int, float, bool, struct)
+- Возврат значений (`int`, `float`, `bool`, `struct`)
 - Рекурсия
 - Void-функции
 
@@ -47,566 +229,577 @@
 - Вложенные структуры
 - Возврат структур из функций
 
+### Пример программы:
+
+```
+extern int printf(char* format, ...);
+
+fn factorial(int n) -> int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * factorial(n - 1);
+}
+
+fn main() -> int {
+    int n = 5;
+    printf("factorial(%d) = %d\n", n, factorial(n));
+    return 0;
+}
+```
+
 ---
+
+## Система ошибок
+
+*Компилятор использует унифицированную систему ошибок с кодами, позиционированием и подсказками.*
+
+### *Категории ошибок*
+
+- #### Лексические ошибки (E001-E099):
+
+```
+E001: Недопустимый символ
+
+E002: Незакрытая строка
+
+E003: Незакрытый комментарий
+
+E004: Неправильный формат числа
+
+E005: Слишком длинный идентификатор
+
+E006: Целое число вне диапазона
+```
+
+- #### Синтаксические ошибки (E100-E199):
+
+```
+E100: Неожиданный токен
+
+E101: Отсутствует точка с запятой
+
+E102: Несовпадение скобок
+
+E103: Отсутствует ожидаемый токен
+```
+
+- #### Семантические ошибки (E200-E399):
+
+```
+E200: Несоответствие типов
+
+E202: Неверный тип условия
+
+E203: Неверный тип возврата
+
+E300: Неопределенная переменная
+
+E301: Повторное объявление
+
+E302: Использование до инициализации
+
+E303: Неверное количество аргументов
+```
+
+- #### Ошибки кодогенерации (E400-E599):
+
+```
+E500: Ошибка ассемблирования
+
+E501: Ошибка линковки
+```
+
+- #### Предупреждения (W001-W299):
+
+```
+W001: Неиспользуемая переменная
+
+W002: Неявное приведение типов
+
+W003: Недостижимый код
+```
+
+### Пример вывода ошибки:
+
+```
+program.src:12:5: error: E300: undefined variable 'undefined_var'
+ 10 | int compute() {
+ 11 |     int x = 10;
+ 12 |     return x + undefined_var;
+     |     ^^^^^^^^^^^^^
+ 13 | }
+ 14 |
+  = note: in current scope
+  = help: Declare the variable before using it, or check for typos
+
+1 error generated. Compilation failed.
+```
+
+### Особенности системы ошибок:
+
+- #### Продолжение компиляции после обнаружения ошибок для выявления всех проблем
+
+- #### Ограничение количества ошибок (настраивается через --max-errors)
+
+- #### Формат JSON для интеграции с IDE и инструментами
+
+- #### Цветной вывод с поддержкой автоопределения терминала
+
+- #### Контекстные подсказки для быстрого исправления
+
+---
+
+## Оптимизации
+
+### Компилятор выполняет следующие оптимизации промежуточного представления:
+
+### Обзор оптимизаций
+
+| Оптимизация                      | Описание                                                | Пример                                                  |
+|----------------------------------|---------------------------------------------------------|---------------------------------------------------------|
+| **Constant Folding**             | Вычисление константных выражений на этапе компиляции    | `3 + 4 × 2` → `11`                                      |
+| **Constant Propagation**         | Замена переменных их известными константными значениями | `int x = 5; y = x + 1;` → `y = 6;`                      |
+| **Dead Code Elimination**        | Удаление инструкций, результаты которых не используются | `int unused = 42;` → удалено                            |
+| **Unreachable Code Elimination** | Удаление базовых блоков, которые никогда не выполняются | `if (true) { ... } else { ... }` → удалена ветка `else` |
+
+---
+
+### Constant Folding (Свёртка констант)
+
+Вычисляет выражения, все операнды которых известны на этапе компиляции.
+
+**До оптимизации:**
+```
+fn main() -> int {
+    int a = 10 + 20;      // → 30
+    int b = a * 2;        // → 60 (после propagation)
+    int c = b + 30;       // → 90
+    int result = (c - 50) * 2 + (100 / 4);  // → 105
+    return result;
+}
+```
+
+**После оптимизации:**
+
+```
+fn main() -> int {
+    return 105;
+}
+```
+
+---
+
+### Constant Propagation (Распространение констант)
+
+Заменяет использования переменных их значениями, если значение известно и не изменяется.
+
+**До оптимизации:**
+
+```
+%var_x = 42
+%var_y = %var_x           ← %var_x известен как 42
+%var_z = ADD %var_y, 8    ← %var_y известен как 42
+```
+
+**После оптимизации:**
+
+```
+%var_x = 42
+%var_y = 42               ← заменено константой
+%var_z = ADD 42, 8        ← заменено константой
+```
+
+#### Преимущества:
+
+- #### Уменьшает количество обращений к памяти
+
+- #### Создаёт возможности для Constant Folding
+
+- #### Упрощает последующие проходы оптимизации
+
+---
+
+### Dead Code Elimination (Удаление мёртвого кода)
+
+Удаляет инструкции, результаты которых никогда не используются.
+
+**До оптимизации:**
+
+```
+%var_used = 10
+%var_unused1 = 100        ← никогда не читается
+%var_unused2 = ADD %var_unused1, 50  ← не используется
+%var_result = ADD %var_used, 5
+RETURN %var_result
+```
+
+**После оптимизации:**
+
+```
+%var_used = 10
+%var_result = ADD %var_used, 5
+RETURN %var_result
+```
+
+#### Критерии удаления:
+
+- #### Переменная не используется ни в одном RETURN
+
+- #### Переменная не используется в качестве аргумента CALL
+
+- #### Переменная не используется в STORE
+
+- #### Переменная не используется в условии JUMP_IF
+
+---
+
+### Unreachable Code Elimination (Удаление недостижимого кода)
+
+**До оптимизации:**
+
+```
+fn main() -> int {
+    if (5 > 3) {          // → всегда true
+        return 105;
+    } else {
+        int dead = 999;   // ← недостижимый код
+        return dead;
+    }
+    return 42;            // ← недостижимо после return
+}
+```
+
+**После оптимизации:**
+
+```
+fn main() -> int {
+    return 105;
+}
+```
+
+#### Алгоритм:
+
+- #### Построение графа потока управления (CFG)
+
+- #### Обход достижимых блоков начиная с entry point
+
+- #### Удаление всех недостижимых блоков и инструкций в них
+
+---
+
+### Пример полной оптимизации:
+
+#### *Исходный код:*
+
+```
+fn main() -> int {
+    // Constant folding: все эти выражения будут вычислены на этапе компиляции
+    int a = 10 + 20;          // → 30
+    int b = a * 2;            // → 60 (после propagation a=30)
+    int c = b + 30;           // → 90 (после propagation b=60)
+    int d = c - 50;           // → 40
+
+    // Constant folding в условии
+    if (5 > 3) {              // → true
+        // Dead code: эти переменные нигде не используются
+        int unused1 = 100;
+        int unused2 = unused1 + 50;
+        int unused3 = unused2 * 2;
+
+        // Ещё constant folding в выражениях
+        int result = (d * 2) + (100 / 4);  // → 40*2 + 25 = 105
+
+        return result;        // → return 105
+    } else {
+        // Unreachable code: этот блок никогда не выполнится
+        int dead1 = 999;
+        int dead2 = dead1 * 10;
+        return dead2;
+    }
+
+    // Unreachable code: после return сюда никогда не дойдём
+    int unreachable = 42;
+    return unreachable;
+}
+```
+
+#### IR до оптимизации: 27 инструкций
+
+#### IR после оптимизации: 1 инструкция
+
+#### Редукция: 96%
+
+### Просмотр результатов оптимизации:
+
+```bash
+
+mycc --ir --optimize --stats examples/optimization_demo.src
+```
+
+---
+
+### Уровни оптимизации
+
+Компилятор поддерживает несколько уровней оптимизации, которые можно указать 
+с помощью флага `-O` или `--optimize`. Каждый уровень включает определённый 
+набор оптимизационных проходов.
+
+---
+
+### Доступные уровни
+
+| Уровень  | Флаг        | Описание                 | Время компиляции  | Качество кода  |
+|----------|-------------|--------------------------|-------------------|----------------|
+| **O0**   | `-O0`       | Без оптимизаций          | Быстрое           | Низкое         |
+| **O1**   | `-O1`, `-O` | Базовая оптимизация      | Быстрое           | Среднее        |
+| **O2**   | `-O2`       | Средняя оптимизация      | Умеренное         | Хорошее        |
+| **O3**   | `-O3`       | Максимальная оптимизация | Медленное         | Отличное       |
+
+```bash
+
+echo "=== Уровень O0 (без оптимизаций) ==="
+mycc --ir --stats examples/optimization_demo.src
+```
+
+```bash
+
+echo -e "\n=== Уровень O1 (базовая) ==="
+mycc --ir -O1 examples/optimization_demo.src --stats
+```
+
+```bash
+
+echo -e "\n=== Уровень O2 (средняя) ==="
+mycc --ir -O2 examples/optimization_demo.src --stats
+```
+
+```bash
+
+echo -e "\n=== Уровень O3 (максимальная) ==="
+mycc --ir -O3 examples/optimization_demo.src --stats
+```
+
+---
+
+## Тестирование
+
+### Запуск всех тестов
+
+```bash
+
+make test-all
+```
+
+### По отдельности
+
+```bash
+
+pytest tests/ -v
+```
+
+```bash
+
+python tests/test_runner.py -v
+```
+
+```bash
+
+bash tests/codegen/run_tests.sh
+```
+
+### Покрытие кода
+
+```bash
+
+make coverage
+xdg-open htmlcov/index.html
+```
+
+### Структура тестов
+
+```
+tests/
+├── test_lexer.py              # Тесты лексера
+├── test_parser.py             # Тесты парсера
+├── test_semantic.py           # Тесты семантики
+├── test_ir.py                 # Тесты IR
+├── test_control_flow.py       # Тесты управляющих конструкций
+├── test_arrays.py             # Тесты массивов
+├── test_advanced_features.py  # Тесты продвинутых возможностей
+├── test_file_comparison.py    # Golden tests
+├── test_runner.py             # Раннер для .src файлов
+├── lexer/                     # Тестовые файлы лексера
+│   ├── valid/                 # Валидные примеры
+│   └── invalid/               # Невалидные примеры
+└── codegen/                   # Тесты кодогенерации
+    ├── valid/                 # Валидные программы
+    ├── invalid/               # Программы с ошибками
+    └── run_tests.sh           # Скрипт запуска
+```
+
+---
+
+## Сборка и установка
+
+### Системные требования
+
+- #### Python 3.8 или выше
+
+- #### NASM 2.15 или выше (для ассемблирования)
+
+- #### GCC (для линковки с libc)
+
+- #### Linux x86-64 (основная целевая платформа)
+
+### Установка из исходников
+
+```bash
+
+# Клонирование
+git clone https://github.com/Galaxiace/compiler-project
+cd compiler-project
+
+# Установка
+make install
+```
+
+### Или в режиме разработки
+```bash
+
+make install-dev
+```
+
+### Сборка
+
+- #### Сборка
+
+```bash
+
+make build
+```
+
+- #### Очистка
+
+```bash
+
+make clean
+```
+
+- #### Полная очистка
+
+```bash
+
+make distclean
+```
 
 ## Структура проекта
 
 ```
 compiler-project/
 │
+├── lexer/                    # Лексический анализатор
+│   ├── scanner.py            # Основной сканер
+│   ├── token.py              # Определения токенов
+│   ├── errors.py             # Ошибки лексера
+│   └── cli.py                # Старый CLI (устаревший, заменён на mycc.py)
 │
-├── lexer/                                        # Основной пакет лексера
-│   ├── init.py
-│   ├── cli.py                                    # Интерфейс командной строки
-│   ├── errors.py                                 # Классы ошибок лексического анализа
-│   ├── scanner.py                                # Основная логика сканера
-│   └── token.py                                  # Определения токенов и их типов
+├── parser/                   # Парсер
+│   ├── parser.py             # Рекурсивный парсер
+│   ├── ast.py                # Классы AST узлов
+│   ├── visitor.py            # Базовый Visitor
+│   ├── pretty_printer.py     # Вывод AST
+│   ├── dot_generator.py      # Генерация DOT
+│   └── json_generator.py     # Генерация JSON
 │
+├── semantic/                 # Семантический анализатор
+│   ├── analyzer.py           # Основной анализатор
+│   ├── symbol_table.py       # Таблица символов
+│   ├── type_system.py        # Система типов
+│   ├── errors.py             # Семантические ошибки
+│   └── decorated_ast.py      # Декорированное AST
 │
-├── parser/                                       # Парсер
-│   ├── init.py
-│   ├── ast.py                                    # Классы AST узлов
-│   ├── parser.py                                 # Основной парсер
-│   ├── visitor.py                                # Базовый Visitor
-│   ├── pretty_printer.py                         # Красивый вывод AST
-│   ├── dot_generator.py                          # Генерация Graphviz DOT
-│   └── json_generator.py                         # JSON вывод 
+├── ir/                       # Промежуточное представление
+│   ├── ir_generator.py       # Генератор IR из AST
+│   ├── ir_instructions.py    # Инструкции IR
+│   ├── basic_block.py        # Базовые блоки
+│   ├── control_flow.py       # Граф потока управления
+│   ├── optimizer.py          # Оптимизатор IR
+│   ├── validator.py          # Валидатор IR
+│   ├── ir_writer.py          # Текстовый вывод
+│   ├── dot_generator.py      # DOT для CFG
+│   └── json_generator.py     # JSON вывод
 │
+├── codegen/                  # Кодогенерация x86-64
+│   ├── x86_generator.py      # Генератор NASM кода
+│   └── stack_frame.py        # Управление стеком
 │
-├── semantic/                                     # Семантический анализатор
-│   ├── init.py
-│   ├── analyzer.py                               # Основной анализатор
-│   ├── decorated_ast.py                          # Декорированное AST
-│   ├── errors.py                                 # Семантические ошибки
-│   ├── symbol_table.py                           # Таблица символов
-│   ├── type_system.py                            # Система типов и совместимость
+├── runtime/                  # Runtime библиотека
+│   └── runtime.asm           # print_int, print_string, read_int, exit, _start
 │
+├── tests/                            # Тесты (316 тестов, 80% покрытие)
+│   ├── test_lexer.py                 # Модульные тесты лексера
+│   ├── test_parser.py                # Тесты парсера
+│   ├── test_parser_extra.py          # Дополнительные тесты парсера
+│   ├── test_semantic.py              # Тесты семантики
+│   ├── test_semantic_extra.py        # Дополнительные тесты семантики
+│   ├── test_ir.py                    # Тесты IR
+│   ├── test_ir_generator.py          # Тесты генератора IR
+│   ├── test_ir_instructions_extra.py # Тесты IR-инструкций
+│   ├── test_control_flow.py          # Тесты управляющих конструкций
+│   ├── test_arrays.py                # Тесты массивов
+│   ├── test_advanced_features.py     # Тесты продвинутых возможностей
+│   ├── test_file_comparison.py       # Golden-тесты (сравнение с эталонами)
+│   ├── test_codegen.py               # Тесты кодогенерации
+│   ├── test_mycc.py                  # Интеграционные тесты CLI
+│   ├── test_optimizer_unit.py        # Модульные тесты оптимизатора
+│   ├── test_errors_module.py         # Тесты системы ошибок
+│   ├── test_runner.py                # Самописный раннер тестов
+│   ├── lexer/                        # Тестовые файлы лексера
+│   │   ├── valid/                    # Валидные примеры
+│   │   └── invalid/                  # Невалидные примеры
+│   └── codegen/                      # Тесты кодогенерации
+│       ├── valid/                    # Валидные программы
+│       ├── invalid/                  # Программы с ошибками
+│       └── run_tests.sh              # Скрипт автоматического тестирования
 │
-├── ir/                                           # Промежуточное представление
-│   ├── __init__.py                               
-│   ├── ir_instructions.py                        # IROpcode, IROperand, IRInstruction
-│   ├── basic_block.py                            # BasicBlock
-│   ├── control_flow.py                           # IRFunction, IRProgram
-│   ├── ir_generator.py                           # IRGenerator (из AST)
-│   ├── ir_writer.py                              # Текстовый вывод
-│   ├── dot_generator.py                          # DOT для Graphviz
-│   ├── optimizer.py
-│   ├── json_generator.py                         # JSON вывод
-│   └── validator.py                              # Валидатор IR
+├── docs/                     # Документация
+│   ├── language_spec.md      # Спецификация языка
+│   ├── developer.md          # Документация для разработчиков
+│   ├── CHANGELOG.md          # История версий (Sprint 1 — Sprint 8)
+│   └── grammar.md            # Формальная грамматика
 │
+├── examples/                 # Примеры программ
+│   ├── quicksort.src         # Быстрая сортировка
+│   ├── optimization_demo.src # Демонстрация оптимизаций
+│   ├── test_complete.src     # Полный тест возможностей
+│   ├── test_full.src         # Все токены языка
+│   ├── test_short.src        # Короткий пример
+│   ├── test_errors.src       # Примеры ошибок для тестирования
+│   └── test_errors.src       # Примеры ошибок
 │
-├── codegen/                                      # x86-64 Кодогенерация
-│   ├── stack_frame.py                            # Управление стековым фреймом (выделение, смещения, выравнивание)   
-│   └── x86_generator.py                          # Генератор NASM-кода из IR (System V AMD64 ABI)
-│
-│
-├── runtime/                                      # Runtime библиотека
-│   └── runtime.asm                               # print_int, print_string, read_int, exit, _start
-│
-│
-├── tests/                                        # Тесты
-│   ├── init.py
-│   ├── test_lexer.py                             # Модульные тесты
-│   ├── test_parser.py                            # Тесты парсера
-│   ├── test_advanced_features.py
-│   ├── test_control_flow.py
-│   ├── test_file_comparison.py                   # Сравнение с эталонами
-│   ├── test_ir.py                                # Тесты IR
-│   ├── test_runner.py                            # Запуск тестов
-│   ├── test_semantic.py                          # Тесты семантики
-│   ├── test_arrays.py
-│   │
-│   ├── codegen/                                  # Тесты кодогенерации
-│   │   ├── valid/                                # Валидные тестовые примеры
-│   │   ├── invalid/                              # Невалидные тестовые примеры 
-│   │   └── run_tests.sh                          # Скрипт автоматического тестирования
-│   │
-│   └── lexer/                                    # Тестовые файлы
-│       ├── valid/                                # Валидные тестовые примеры
-│       └── invalid/                              # Невалидные тестовые примеры
-│
-│
-├── docs/                                         # Документация
-│   ├── language_spec.md                          # Спецификация языка
-│   └── grammar.md 
-│
-│
-├── examples/                                     # Примеры кода
-│   ├── test_complete.src
-│   ├── test_full.src
-│   ├── test_short.src
-│   ├── optimization_demo.src                     # Демонстрация оптимизаций
-│   └── quicksort.src                             # Демо-программа: Quicksort
-│
-│
-├── build_demo.sh
-├── requirements.txt                              # Зависимости проекта
-├── setup.py                                      # Установочный файл
-└── README.md                                     # Этот файл
+├── .coveragerc               # Конфигурация покрытия кода
+├── mycc.py                   # Главный исполняемый файл
+├── errors.py                 # Единая система ошибок
+├── setup.py                  # Установочный скрипт
+├── Makefile                  # Система сборки
+├── requirements.txt          # Зависимости
+├── build_demo.sh             # Демо-скрипт сборки
+└── README.md                 # Этот файл
 ```
 
 ---
 
-## Использование
+## Документация
 
-### Лексический анализ
+### Подробная документация доступна в директории `docs/`:
 
-```bash
+- #### language_spec.md — полная спецификация языка
 
-python -m lexer.cli --input examples/test_short.src --mode lex
-```
+- #### grammar.md — формальная грамматика в EBNF
 
-### Парсинг с указанием формата вывода
+- #### developer.md - документация для разработчиков
 
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode parse --ast-format text
-```
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode parse --ast-format dot --output ast.dot
-```
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode parse --ast-format json --output ast.json
-```
-
-### Опции семантического анализа
-
-#### Подробный вывод
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode semantic --verbose
-```
-
-#### Сохранить отчет в файл
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode semantic --output report.txt
-```
-
-### Генерация промежуточного представления (IR)
-
-#### Генерация IR в текстовом формате
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir
-```
-
-#### Сохранение IR в файл
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --output test_short.ir
-```
-
-#### Генерация IR в формате JSON
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --ir-format json
-```
-
-#### Генерация Control Flow Graph (CFG) в формате DOT
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --ir-format dot --output test_short.dot
-```
-
-#### Визуализация CFG (требуется Graphviz)
-
-```bash
-
-# Генерация PNG из DOT файла
-dot -Tpng test_short.dot > test_short_cfg.png 2>/dev/null
-```
-
-#### Генерация IR со статистикой
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --stats
-```
-
-#### Валидация IR
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --validate
-```
-
-#### Подробный вывод с отчетом
-
-```bash
-
-python -m lexer.cli --input examples/test_short.src --mode ir --verbose
-```
-
-
-#### Компиляция в ассемблер
-
-```bash
-
-# Базовая компиляция
-python -m lexer.cli --input examples/test_short.src --mode compile --output test_short.asm
-```
-
-```bash
-
-# Компиляция большого примера
-python -m lexer.cli --input examples/test_complete.src --mode compile --output test_complete.asm
-```
-
-#### Компиляция с оптимизациями
-
-```bash
-
-python -m lexer.cli --input examples/quicksort.src --mode compile --output output.asm --optimize
-```
-
-#### Сборка и запуск
-
-```bash
-
-# Ассемблирование
-nasm -f elf64 -o output.o output.asm
-nasm -f elf64 -o runtime.o runtime/runtime.asm
-
-# Линковка
-ld -o program runtime.o output.o
-
-# Запуск
-./program
-echo "Exit code: $?"
-```
-
-#### Демо
-
-```bash
-
-bash build_demo.sh
-```
-
-#### Генерация IR с оптимизациями и статистикой
-
-```bash
-
-python -m lexer.cli --input examples/quicksort.src --mode ir --optimize --stats
-```
+- #### CHANGELOG.md - История версий (Sprint 1 — Sprint 8)
 
 ---
-
-## Исходный код: examples/quicksort.src
-
-```c
-fn swap(int arr[], int i, int j) -> void {
-    int temp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = temp;
-}
-
-fn partition(int arr[], int low, int high) -> int {
-    int pivot = arr[high];
-    int i = low - 1;
-    int j = low;
-    while (j < high) {
-        if (arr[j] < pivot) {
-            i = i + 1;
-            swap(arr, i, j);
-        }
-        j = j + 1;
-    }
-    swap(arr, i + 1, high);
-    return i + 1;
-}
-
-fn quicksort(int arr[], int low, int high) -> void {
-    if (low < high) {
-        int pi = partition(arr, low, high);
-        quicksort(arr, low, pi - 1);
-        quicksort(arr, pi + 1, high);
-    }
-}
-
-fn main() -> int {
-    int arr[5];
-    arr[0] = 42;
-    arr[1] = 23;
-    arr[2] = 17;
-    arr[3] = 8;
-    arr[4] = 4;
-
-    quicksort(arr, 0, 4);
-
-    return arr[0] + arr[1] + arr[2] + arr[3] + arr[4];
-}
-```
-
-## Пример вывода AST
-
-```
-Program [line 1]:
-  FunctionDecl: main -> void [line 1]:
-    Parameters: []
-    Body [line 1]:
-      Block [line 2-5]:
-        VarDecl: int x = [line 3]:
-          Literal: 42 [line 3]
-        Return [line 4]: void
-```
-
----
-
-## Тестирование 
-
-### Запуск всех тестов
-```bash
-
-pytest tests/ -v
-```
-
-### Тестирование valid и invalid src:
-
-```bash
-
-python tests/test_runner.py -v
-```
-```bash
-
-tests/codegen/run_tests.sh
-```
-
-### Тестирование файла со всеми токенами
-
-```bash
-
-python -m lexer.cli --input examples/test_full.src
-```
-
-### Тестирование файла с базовыми конструкциями
-```bash
-
-python -m lexer.cli --input tests/lexer/valid/test_basic.src
-```
-
-### Тестирование файла с операторами
-```bash
-
-python -m lexer.cli --input tests/lexer/valid/test_operators.src
-```
-
-### Тестирование файла с недопустимыми символами
-```bash
-
-python -m lexer.cli --input tests/lexer/invalid/test_invalid_char.src
-```
-
-### Тестирование файла с незакрытой строкой
-```bash
-
-python -m lexer.cli --input tests/lexer/invalid/test_unterminated_string.src
-```
-
----
-
-## Детальное описание компонентов
-
-### 1. Пакет `lexer/` — ядро лексического анализатора
-
-#### `token.py` — определение токенов
-Содержит перечисление `TokenType` со всеми типами токенов и класс `Token` для хранения информации о токене.
-
-**Ключевые типы токенов:**
-- **Ключевые слова:** `IF`, `ELSE`, `WHILE`, `FOR`, `INT`, `FLOAT`, `BOOL`, `RETURN`, `TRUE`, `FALSE`, `VOID`, `STRUCT`, `FN`
-- **Операторы:** `PLUS (+)`, `MINUS (-)`, `STAR (*)`, `SLASH (/)`, `PERCENT (%)`, `ASSIGN (=)`, `EQ_EQ (==)`, `NOT_EQ (!=)`, `LESS (<)`, `GREATER (>)`, `LESS_EQ (<=)`, `GREATER_EQ (>=)`, `AND (&)`, `AND_AND (&&)`, `OR (|)`, `OR_OR (||)`
-- **Разделители:** `LPAREN (`, `RPAREN )`, `LBRACE {`, `RBRACE }`, `SEMICOLON ;`, `COMMA ,`
-- **Литералы:** `IDENTIFIER`, `INT_LITERAL`, `FLOAT_LITERAL`, `STRING_LITERAL`, `BOOL_LITERAL`
-- **Специальные:** `END_OF_FILE`, `INVALID`
-
-#### `errors.py` — иерархия ошибок
-``` python
-LexicalError              # Базовый класс
-├── InvalidCharacterError   # Недопустимый символ
-├── UnterminatedStringError # Незакрытая строка
-├── UnterminatedCommentError # Незакрытый комментарий
-├── InvalidNumberError      # Неправильный формат числа
-├── IdentifierTooLongError  # Идентификатор длиннее 255 символов
-└── IntegerOutOfRangeError  # Число вне диапазона [-2³¹, 2³¹-1]
-```
-
-#### `scanner.py` — основной класс Scanner
-Выполняет преобразование исходного кода в токены.
-
-### **Основные методы:**
-
-```
-__init__(source) — инициализация с исходным кодом
-
-scan_tokens() — сканирование всех токенов
-
-next_token() — получение следующего токена
-
-peek_token() — просмотр следующего токена без продвижения
-
-is_at_end() — проверка достижения конца файла
-
-get_line() / get_column() — получение текущей позиции
-```
-
-### *Внутренние методы для распознавания:*
-
-```
-_read_identifier() — чтение идентификаторов и ключевых слов
-
-_read_number() — чтение чисел (int и float)
-
-_read_string() — чтение строк
-
-_read_operator() — чтение операторов
-
-_skip_comment() — пропуск комментариев
-
-cli.py — интерфейс командной строки
-```
-
-Обрабатывает аргументы командной строки и запускает сканер.
-
----
-
-### 2. Директория tests/ — тестирование
-
-`test_lexer.py` — модульные тесты
-
-#### Проверяет все аспекты работы лексера:
-
-1) Распознавание всех типов токенов
-
-2) Обработка граничных случаев
-
-3) Отслеживание позиции
-
-4) Обработка ошибок
-
-### Тестовые файлы .src
-
-#### Хранят примеры кода для тестирования:
-
-1) `valid/` — корректный код, который должен успешно анализироваться
-
-2) `invalid/` — код с ошибками для проверки обработки ошибок
-
----
-
-### 3. Директория docs/ — документация
-`language_spec.md`
-Спецификация языка в формате EBNF, описывающая:
-
-1) Лексическую грамматику
-
-2) Ключевые слова
-
-3) Правила для идентификаторов
-
-4) Типы литералов
-
-5) Операторы и разделители
-
-6) Обработку пробелов и комментариев
-
----
-
----
-
-## Спринт 5: x86-64 Кодогенерация
-
-### Архитектура
-
-Генератор кода преобразует промежуточное представление (IR) в ассемблер NASM для x86-64 Linux,
-следуя соглашениям System V AMD64 ABI.
-
-Исходный код (.src) → Лексер → Парсер → Семантика → IR → x86-64 Ассемблер → NASM → .o → ld → программа
-
-### Оптимизации IR
-Компилятор выполняет следующие оптимизации промежуточного представления:
-
-```
-Оптимизация                        Описание
-Constant Folding                   Вычисление константных выражений на этапе компиляции: 3 + 4 → 7
-Constant Propagation	           Замена переменных на известные константы
-Dead Code Elimination	           Удаление неиспользуемых инструкций
-Unreachable Code Elimination	   Удаление недостижимых базовых блоков
-```
-
-### Пример оптимизации
-
-#### 1. Просмотр IR без оптимизаций
-
-```bash
-
-python -m lexer.cli --input examples/optimization_demo.src --mode ir 2>&1 | grep -v "^#"
-```
-
-#### 2. Просмотр IR с оптимизациями
-
-```bash
-
-python -m lexer.cli --input examples/optimization_demo.src --mode ir --optimize 2>&1 | grep -v "^#"
-```
-
-#### 3. Статистика оптимизаций
-
-```bash
-
-python -m lexer.cli --input examples/optimization_demo.src --mode ir --optimize --stats 2>&1 | grep -E "folded|propagated|removed|Reduction|Total instructions"
-```
-
-#### 4. Компиляция и запуск
-
-```bash
-
-python -m lexer.cli --input examples/optimization_demo.src --mode compile --output /tmp/opt_demo.asm --optimize 2>&1 | tail -1
-nasm -f elf64 /tmp/opt_demo.asm -o /tmp/opt_demo.o 2>&1
-nasm -f elf64 runtime/runtime.asm -o /tmp/runtime.o 2>&1
-ld -o /tmp/opt_demo /tmp/runtime.o /tmp/opt_demo.o 2>&1
-/tmp/opt_demo
-echo "Exit code: $? (ожидается 105: 40*2 + 100/4 = 80 + 25 = 105)"
-```
-
----
-
-### System V AMD64 ABI
-
-**Передача параметров:**
-- Целочисленные/указатели (64-bit): RDI, RSI, RDX, RCX, R8, R9
-- Целочисленные (32-bit): EDI, ESI, EDX, ECX, R8D, R9D
-- Float/double: XMM0-XMM7
-- Возврат int: RAX (EAX)
-- Возврат float: XMM0
-
-**Стек-фрейм:**
-
-```
-Высокие адреса
-+------------------+
-| Аргументы (>6) | [rbp+32+]
-+------------------+
-| Return Address | [rbp+8]
-+------------------+
-| Saved RBP | [rbp] ← RBP
-+------------------+
-| Локальная 1 | [rbp-4]
-+------------------+
-| Локальная 2 | [rbp-8]
-+------------------+
-| Временная 1 | [rbp-12]
-+------------------+
-| ... |
-+------------------+
-Низкие адреса
-```

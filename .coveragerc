@@ -1,0 +1,15 @@
+[run]
+omit =
+    lexer/cli.py
+    mycc.py
+    setup.py
+    tests/test_runner.py
+    */__init__.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    class .*Error.*:
+    def __str__

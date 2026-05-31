@@ -1,5 +1,5 @@
 """
-Setup configuration for MiniCompiler project.
+Setup configuration for MiniCompiler project (Sprint 8).
 """
 
 from setuptools import setup, find_packages
@@ -8,15 +8,16 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="compiler",
-    version="0.1.0",
+    name="mycc",
+    version="1.0.0",
     author="Galaxiace",
     author_email="zevs2885@gmail.com",
     description="A mini compiler for a C-like language",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Galaxiace/compiler-project",
-    packages=find_packages(),
+    py_modules=['mycc'],  # Явно указываем mycc.py как модуль
+    packages=find_packages(),  # Также ищем пакеты (lexer, parser, etc.)
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
@@ -35,7 +36,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "compiler=lexer.cli:main",
+            "mycc=mycc:main",
         ],
     },
     include_package_data=True,

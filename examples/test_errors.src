@@ -1,0 +1,13 @@
+// examples/test_errors.src - файл с разными типами ошибок для тестирования
+fn main() -> int {
+    int x = 10;
+    int y = x + undefined_var;  // E300: undefined variable
+    float z = 3.14;
+    int w = z + 5;              // E200: type mismatch (должно быть warning W002)
+    bool flag = true;
+    int result = flag + 10;     // E200: type mismatch
+    if (x) {                    // E202: condition must be bool
+        x = x + 1;
+    }
+    return "hello";             // E203: invalid return type
+}
